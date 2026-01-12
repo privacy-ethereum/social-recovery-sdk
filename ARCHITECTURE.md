@@ -27,11 +27,10 @@ social-recovery-sdk/
 │   └── script/
 │
 ├── circuits/                     # Noir circuits for zkJWT
-│   ├── zkjwt/
-│   │   ├── src/
-│   │   │   └── main.nr
-│   │   └── Nargo.toml
-│   └── lib/                      # Shared circuit libraries
+│   └── zkjwt/
+│       ├── src/
+│       │   └── main.nr
+│       └── Nargo.toml
 │
 ├── sdk/                          # TypeScript SDK
 │   ├── src/
@@ -60,10 +59,9 @@ social-recovery-sdk/
 │   ├── test/
 │   └── package.json
 │
-├── examples/                     # Integration examples
-│   └── simple-wallet/
-│
-└── docs/                         # Additional documentation
+├── SPEC.md
+├── ARCHITECTURE.md
+└── README.md
 ```
 
 ---

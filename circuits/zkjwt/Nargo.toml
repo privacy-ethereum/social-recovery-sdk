@@ -1,0 +1,6 @@
+[package]
+name = "zkjwt"
+type = "bin"
+authors = [""]
+
+[dependencies]

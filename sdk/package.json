@@ -1,0 +1,23 @@
+{
+  "name": "@pse/social-recovery-sdk",
+  "version": "0.1.0",
+  "description": "SDK for on-chain social recovery",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["ethereum", "social-recovery", "wallet"],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+// AuthManager
+// TODO: Implement
+
+export {}
