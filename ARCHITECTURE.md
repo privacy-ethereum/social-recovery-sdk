@@ -3,6 +3,8 @@
 **Version:** 1.0.0
 **Date:** 2026-01-12
 
+This document defines the codebase structure. For functional requirements and protocol design, see [SPEC.md](./SPEC.md).
+
 ---
 
 ## Project Structure
@@ -11,56 +13,49 @@
 social-recovery-sdk/
 ├── contracts/                    # Solidity smart contracts (Foundry)
 │   ├── src/
-│   │   ├── RecoveryManager.sol
-│   │   ├── RecoveryManagerFactory.sol
+│   │   ├── RecoveryManager.sol       # Core: session lifecycle, proof verification, execution
+│   │   ├── RecoveryManagerFactory.sol # Deploys RecoveryManager proxies (EIP-1167)
 │   │   ├── verifiers/
-│   │   │   ├── PasskeyVerifier.sol
-│   │   │   └── ZkJwtVerifier.sol
+│   │   │   ├── PasskeyVerifier.sol   # WebAuthn/P-256 signature verification
+│   │   │   └── ZkJwtVerifier.sol     # Noir ZK proof verification for JWT auth
 │   │   ├── interfaces/
-│   │   │   ├── IRecoveryManager.sol
-│   │   │   ├── IVerifier.sol
-│   │   │   └── IWallet.sol
+│   │   │   ├── IRecoveryManager.sol  # RecoveryManager interface
+│   │   │   ├── IVerifier.sol         # Common verifier interface
+│   │   │   └── IWallet.sol           # Interface wallets must implement
 │   │   └── libraries/
-│   │       ├── GuardianLib.sol
-│   │       └── EIP712Lib.sol
-│   ├── test/
-│   └── script/
+│   │       ├── GuardianLib.sol       # Guardian struct, encoding helpers
+│   │       └── EIP712Lib.sol         # EIP-712 typed data hashing
+│   ├── test/                         # Foundry tests
+│   └── script/                       # Deployment scripts
 │
 ├── circuits/                     # Noir circuits for zkJWT
 │   └── zkjwt/
 │       ├── src/
-│       │   └── main.nr
+│       │   └── main.nr               # ZK circuit: JWT signature + email commitment
 │       └── Nargo.toml
 │
 ├── sdk/                          # TypeScript SDK
 │   ├── src/
-│   │   ├── index.ts              # Public exports
-│   │   ├── types.ts              # Shared types
-│   │   ├── constants.ts          # Chain addresses, EIP-712 domain
+│   │   ├── index.ts                  # Public exports
+│   │   ├── types.ts                  # Guardian, RecoveryIntent, Session types
+│   │   ├── constants.ts              # Chain addresses, EIP-712 domain config
 │   │   ├── auth/
-│   │   │   ├── index.ts
-│   │   │   ├── AuthManager.ts
-│   │   │   ├── adapters/
-│   │   │   │   ├── IAuthAdapter.ts
-│   │   │   │   ├── EoaAdapter.ts
-│   │   │   │   ├── PasskeyAdapter.ts
-│   │   │   │   └── ZkJwtAdapter.ts
-│   │   │   └── utils/
-│   │   │       ├── eip712.ts
-│   │   │       └── webauthn.ts
+│   │   │   ├── AuthManager.ts        # Manages adapters, generates proofs
+│   │   │   └── adapters/
+│   │   │       ├── IAuthAdapter.ts   # Adapter interface
+│   │   │       ├── EoaAdapter.ts     # EOA: EIP-712 signing
+│   │   │       ├── PasskeyAdapter.ts # Passkey: WebAuthn assertion
+│   │   │       └── ZkJwtAdapter.ts   # zkJWT: OAuth + Noir proof generation
 │   │   ├── recovery/
-│   │   │   ├── index.ts
-│   │   │   ├── RecoveryClient.ts
-│   │   │   └── PolicyBuilder.ts
+│   │   │   ├── RecoveryClient.ts     # Main client: start, submit, execute recovery
+│   │   │   └── PolicyBuilder.ts      # Fluent API for building guardian policies
 │   │   └── contracts/
-│   │       ├── index.ts
-│   │       ├── RecoveryManagerContract.ts
-│   │       └── FactoryContract.ts
-│   ├── test/
-│   └── package.json
+│   │       ├── RecoveryManagerContract.ts  # Typed contract interactions
+│   │       └── FactoryContract.ts          # Factory contract interactions
+│   └── test/
 │
-├── SPEC.md
-├── ARCHITECTURE.md
+├── SPEC.md                       # Functional requirements, protocol design
+├── ARCHITECTURE.md               # Codebase structure (this file)
 └── README.md
 ```
 

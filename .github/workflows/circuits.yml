@@ -1,0 +1,23 @@
+name: Circuits
+
+on:
+  push:
+    paths:
+      - "circuits/**"
+  pull_request:
+    paths:
+      - "circuits/**"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: noir-lang/noirup@v0.1.4
+        with:
+          toolchain: stable
+
+      - name: Check
+        working-directory: circuits/zkjwt
+        run: nargo check
