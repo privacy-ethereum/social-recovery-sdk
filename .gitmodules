@@ -1,0 +1,3 @@
+[submodule "contracts/lib/p256-verifier"]
+	path = contracts/lib/p256-verifier
+	url = https://github.com/daimo-eth/p256-verifier

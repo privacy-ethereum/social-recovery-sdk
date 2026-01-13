@@ -1,5 +1,7 @@
 // Adapters exports
 export * from './IAuthAdapter';
-export * from './EoaAdapter';
 export * from './PasskeyAdapter';
-export * from './ZkJwtAdapter';
+
+// EOA and ZkJWT adapters will be implemented in Phase 2/3
+// export * from './EoaAdapter';
+// export * from './ZkJwtAdapter';
