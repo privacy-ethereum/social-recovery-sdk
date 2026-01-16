@@ -9,7 +9,7 @@ on:
       - "circuits/**"
 
 jobs:
-  check:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +18,10 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Check
+      - name: Build
         working-directory: circuits/zkjwt
-        run: nargo check
+        run: nargo build
+
+      - name: Test
+        working-directory: circuits/zkjwt
+        run: nargo test
