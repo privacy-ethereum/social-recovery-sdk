@@ -46,7 +46,7 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 | **Challenge Period** | Time after threshold is met during which owner can cancel |
 | **Intent** | Typed message specifying recovery action with replay protection |
 | **Session** | Single recovery attempt; only one active per wallet |
-| **Commitment** | For zkJWT: `Poseidon(email, salt)` — hides email while allowing verification |
+| **Commitment** | For zkJWT: `Poseidon2(email_hash, salt)` where `email_hash = Poseidon2(packed_email, email_len)` — hides email while allowing verification |
 
 ---
 
@@ -118,7 +118,7 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 |--------|------------|-------|---------|
 | EOA | Ethereum address | ECDSA signature (EIP-712) | Reveal on use |
 | Passkey | `keccak256(pubKeyX \|\| pubKeyY)` | WebAuthn assertion | Reveal on use |
-| zkJWT | `Poseidon(email, salt)` | Noir ZK proof | Full privacy |
+| zkJWT | `Poseidon2(email_hash, salt)` | Noir ZK proof | Full privacy |
 
 ### 4.2 EOA
 
@@ -137,13 +137,29 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 ### 4.4 zkJWT
 
 - Wallet owner enters guardian's email + generates random salt
-- Commitment: `Poseidon(email, salt)` — SNARK-friendly hash
+- Commitment: `Poseidon2(email_hash, salt)` where `email_hash = Poseidon2(packed_email, email_len)`
 - Owner shares salt with guardian out-of-band
 - Proof: Noir ZK proof proving:
   - Valid JWT for some email (Google only in v1)
-  - `Poseidon(email, salt) == commitment`
-  - Authorizes the recovery intent
+  - JWT's `email_verified` claim is `true`
+  - `Poseidon2(email_hash, salt) == commitment`
+  - Authorizes the recovery intent (bound via `intent_hash` public input)
 - Email never revealed, even during recovery
+
+**Implementation Details:**
+- **Algorithm**: Uses `noir-jwt` library with RS256 (RSA 2048-bit SHA-256)
+- **email_hash**: `Poseidon2([packed_field_0..4, email_len])` — email bytes packed into 5 Fields (31 bytes each)
+- **Commitment**: `Poseidon2([email_hash, salt])`
+- **Public inputs**: RSA public key modulus (18 limbs, identifies Google signing key), intent_hash (binds proof to specific recovery session)
+- **Proof output**: commitment (Field)
+
+**Claims Verified:**
+- `email`: Extracted and used to compute commitment
+- `email_verified`: Must be `true` (asserted in circuit)
+
+**Claims Not Verified (by design):**
+- `iss` (issuer): Not checked because signature verification against Google's public key already proves authenticity
+- `exp` (expiration): Not checked because the commitment scheme is time-independent; a valid email ownership proof remains valid regardless of JWT age
 
 ---
 
@@ -215,6 +231,8 @@ This binds proofs to:
 - Specific session (nonce)
 - Specific chain and contract (prevents cross-chain/cross-contract replay)
 - Time limit (deadline)
+
+For zkJWT, the EIP-712 hash of RecoveryIntent is passed as `intent_hash` public input to the circuit.
 
 ---
 
@@ -337,7 +355,7 @@ Guardian {
 Identifier encoding:
 - EOA: `bytes32(uint256(uint160(address)))`
 - Passkey: `keccak256(pubKeyX || pubKeyY)`
-- zkJWT: `Poseidon(email, salt)`
+- zkJWT: `Poseidon2(email_hash, salt)` where `email_hash = Poseidon2(packed_email, email_len)`
 
 ### RecoverySession
 

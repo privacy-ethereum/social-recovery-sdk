@@ -120,10 +120,12 @@ OAuth-based authentication with privacy — email never revealed on-chain.
 ```typescript
 // Owner enters guardian's email and generates salt
 const guardianEmail = "guardian@example.com";
-const salt = randomBytes(32);
+const salt = randomField();
 
-// Compute Poseidon commitment (SNARK-friendly hash)
-const commitment = poseidon([emailToField(guardianEmail), salt]);
+// Compute Poseidon2 commitment (SNARK-friendly hash)
+// email_hash = Poseidon2(packed_email_fields, email_len)
+// commitment = Poseidon2(email_hash, salt)
+const commitment = computeEmailCommitment(guardianEmail, salt);
 
 const guardian = {
   type: GuardianType.ZkJWT,
@@ -154,21 +156,24 @@ const proof = await generateZkProof({
 ```
 
 ### What the Circuit Proves
-1. "I have a valid JWT signed by Google"
-2. "The JWT contains email X"
-3. "Poseidon(X, salt) equals the on-chain commitment"
-4. "I'm authorizing this specific recovery intent"
+1. "I have a valid JWT signed by Google" (verified via RSA public key)
+2. "The JWT's `email_verified` claim is `true`"
+3. "The JWT contains email X matching my private input"
+4. "`Poseidon2(Poseidon2(email), salt) == commitment`"
 
-Without revealing: the email address or the JWT contents.
+Without revealing: the email address or the JWT contents. The `intent_hash` public input binds the proof to a specific recovery session.
 
 ### Verification (On-Chain)
 ```solidity
 // Noir verifier checks the ZK proof
-bool valid = zkJwtVerifier.verify(
+// Public inputs: RSA pubkey modulus (18 limbs), intent_hash
+// Return value: commitment
+Field returnedCommitment = zkJwtVerifier.verify(
   proof,
-  [commitment, intentHash, googlePubKeyHash]
+  pubkeyModulusLimbs,  // Identifies Google signing key
+  intentHash           // Binds to recovery session
 );
-require(valid && commitment == guardian.identifier, "Invalid proof");
+require(returnedCommitment == guardian.identifier, "Invalid commitment");
 ```
 
 ## Choosing an Auth Method

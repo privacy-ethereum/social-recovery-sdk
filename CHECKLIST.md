@@ -30,3 +30,15 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 **Notes:**
 - Uses software P-256 verification (~330k gas). RIP-7212 precompile (~3.4k gas) available on L2s but not yet integrated.
 - Solidity version set to `^0.8.21` for p256-verifier compatibility.
+
+---
+
+## Phase 2: zkJWT & Core Contracts (In Progress)
+
+**Circuits:**
+- `zkjwt/main.nr` - JWT signature verification + email commitment computation
+- Unit tests: 3 tests (packing, commitment, multi-field uniqueness)
+
+**Dependencies:**
+- Added `noir-jwt` v0.5.1 for RS256 JWT verification
+- Added `poseidon` v0.2.0 for Poseidon2 hashing

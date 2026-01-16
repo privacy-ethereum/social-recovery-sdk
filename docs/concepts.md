@@ -8,7 +8,7 @@ A **guardian** is a party that can vouch for a wallet recovery. Each guardian is
 |------|------------|---------|
 | EOA | Ethereum address | `0x1234...abcd` |
 | Passkey | Hash of P-256 public key | `keccak256(pubKeyX \|\| pubKeyY)` |
-| zkJWT | Poseidon commitment | `Poseidon(email, salt)` |
+| zkJWT | Poseidon commitment | `Poseidon2(Poseidon2(email), salt)` |
 
 Guardians don't need to deploy contracts or hold assets — they just need to be able to produce a valid proof when recovery is needed.
 
