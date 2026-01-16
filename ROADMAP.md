@@ -1,7 +1,6 @@
 # Social Recovery SDK — Q1 2026 Roadmap
 
-**Target Completion:** March 6, 2026
-**Buffer:** March (unexpected issues, refinements)
+**Target Completion:** February 27
 
 ---
 
