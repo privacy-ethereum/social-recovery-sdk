@@ -35,21 +35,7 @@
 - SDK ↔ Contract integration tests
 - Testnet deployment
 
-## Phase 5: Ambire Wallet Integration (February 23–27)
+## Phase 5: Integration testing // Ambire Wallet (February 23-27)
 
 - Integration with Ambire wallet
 - Full recovery flow testing
-
-## Phase 6: Cleanup & Documentation (March 2–6)
-
-- Code cleanup & refactoring
-- Documentation updates
-- Integration guide for other wallets
-
----
-
-## Phase 7: Security Audit (March)
-
-- Code freeze
-- Audit submission
-- Address findings
