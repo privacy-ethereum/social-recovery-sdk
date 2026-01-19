@@ -1,6 +1,6 @@
 <h1 align="center">Social Recovery SDK</h1>
 
-A composable SDK for adding social recovery to smart wallets. Designate guardians who can collectively restore wallet access using EOA signatures, Passkeys, or zero-knowledge proofs.
+A composable SDK for adding social recovery to smart wallets. Designate guardians who can collectively restore wallet access using EOA signatures, Passkeys, or zero-knowledge proofs of emails and passport.
 
 ## Structure
 

@@ -45,7 +45,7 @@ fn main(
     salt: Field,
     // Public inputs
     pubkey_modulus_limbs: pub [u128; 18],
-    intent_hash: pub Field,
+    _intent_hash: pub Field,
 ) -> pub Field {
     // Initialize and verify JWT signature
     let jwt: JWT<MAX_DATA_LENGTH> = JWT::init(
