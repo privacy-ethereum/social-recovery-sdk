@@ -26,4 +26,4 @@ cd circuits/zkjwt && nargo build && nargo test
 
 ## Documentation
 
-See [docs/](./docs/README.md) for detailed documentation, [SPEC.md](./SPEC.md) for the full technical specification, [ARCHITECTURE.md](./ARCHITECTURE.md) for the project architecture, and [ROADMAP.md](./ROADMAP.md) for the development roadmap.
+See [docs/](./docs/README.md) for detailed documentation, [SPEC.md](./SPEC.md) for the full technical specification, [ARCHITECTURE.md](./ARCHITECTURE.md) for the project architecture, [ROADMAP.md](./ROADMAP.md) for the development roadmap, and [CHECKLIST.md](./CHECKLIST.md) for the current progress tracking.
