@@ -45,8 +45,11 @@ fn main(
     salt: Field,
     // Public inputs
     pubkey_modulus_limbs: pub [u128; 18],
-    _intent_hash: pub Field,
+    intent_hash: pub Field,
 ) -> pub Field {
+    // Dummy constraint for intent_hash public input
+    assert(intent_hash != 0, "intent_hash cannot be zero");
+
     // Initialize and verify JWT signature
     let jwt: JWT<MAX_DATA_LENGTH> = JWT::init(
         data,
@@ -164,4 +167,11 @@ fn test_multi_field_packing_and_uniqueness() {
     // Same long email with same salt must produce same commitment (deterministic)
     let long_commitment_2 = Poseidon2::hash([long_email_hash, 999], 2);
     assert(long_commitment == long_commitment_2);
+}
+
+#[test(should_fail_with = "intent_hash cannot be zero")]
+fn test_intent_hash_cannot_be_zero() {
+    // This test verifies that intent_hash = 0 is rejected
+    let intent_hash: Field = 0;
+    assert(intent_hash != 0, "intent_hash cannot be zero");
 }

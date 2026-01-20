@@ -25,7 +25,7 @@ export interface ZkJwtInputs {
   salt: bigint;
   // Public inputs
   pubkey_modulus_limbs: bigint[];
-  _intent_hash: bigint;
+  intent_hash: bigint;
 }
 
 /**
@@ -74,7 +74,7 @@ export function serializeToProverToml(
   lines.push("# Scalar inputs");
   lines.push(`base64_decode_offset = "${inputs.base64_decode_offset}"`);
   lines.push(`salt = "${inputs.salt.toString()}"`);
-  lines.push(`_intent_hash = "${inputs._intent_hash.toString()}"`);
+  lines.push(`intent_hash = "${inputs.intent_hash.toString()}"`);
   lines.push("");
 
   // Array inputs

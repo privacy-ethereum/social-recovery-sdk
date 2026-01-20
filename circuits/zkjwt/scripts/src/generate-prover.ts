@@ -28,7 +28,7 @@ function parseArgs(): CliArgs {
   const result: CliArgs = {
     email: "alice@test.com",
     salt: 12345n,
-    intentHash: 0n,
+    intentHash: 1n, // Must be non-zero (circuit constraint)
   };
 
   for (const arg of args) {
@@ -89,10 +89,10 @@ async function main() {
   console.log(`  Email bytes: [${fixture.inputs.email.slice(0, 20).join(", ")}...]`);
   console.log("");
 
-  console.log("Next steps:");
-  console.log("  1. cd circuits/zkjwt");
-  console.log("  2. nargo check  (validate inputs)");
-  console.log("  3. nargo prove  (generate proof)");
+  console.log("Next steps (from circuits/zkjwt/):");
+  console.log("  1. nargo execute                                              (generate witness)");
+  console.log("  2. bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target  (prove)");
+  console.log("  3. bb verify -p ./target/proof -k ./target/vk                 (verify)");
 }
 
 main().catch((err) => {

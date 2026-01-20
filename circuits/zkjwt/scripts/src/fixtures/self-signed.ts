@@ -92,7 +92,7 @@ export async function generateSelfSignedFixture(
     emailLength: emailBytes.length,
     salt,
     pubkey_modulus_limbs: jwtInputs.pubkeyModulusLimbs,
-    _intent_hash: intentHash,
+    intent_hash: intentHash,
   };
 
   // Compute expected commitment using Poseidon2
