@@ -38,6 +38,7 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 **Circuits:**
 - `zkjwt/main.nr` - JWT signature verification + email commitment computation
 - Unit tests: 3 tests (packing, commitment, multi-field uniqueness)
+- Integration test with self-signed JWT ([circuits/zkjwt/scripts/](./circuits/zkjwt/scripts/)) - generates valid Prover.toml inputs
 
 **Dependencies:**
 - Added `noir-jwt` v0.5.1 for RS256 JWT verification
