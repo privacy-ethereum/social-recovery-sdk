@@ -1,0 +1,19 @@
+{
+  "name": "zkjwt-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "tsx src/generate-prover.ts",
+    "generate:self-signed": "tsx src/generate-prover.ts --fixture=self-signed"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "@aztec/bb.js": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.17.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}
