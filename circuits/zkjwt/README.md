@@ -8,9 +8,17 @@ Noir circuit for zkJWT guardian authentication. Verifies JWT signatures and outp
 # Generate test inputs (self-signed JWT)
 cd scripts && npm install && npm run generate
 
-# Run circuit
+# Execute circuit (generates witness)
 cd .. && nargo execute
+
+# Generate proof and verification key
+bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target
+
+# Verify proof
+bb verify -p ./target/proof -k ./target/vk
 ```
+
+**Note:** Ensure `bb` version is compatible with your `nargo` version. Run `bbup` to auto-install the correct version.
 
 ## Directory Structure
 
