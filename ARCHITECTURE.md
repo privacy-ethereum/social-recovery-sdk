@@ -32,7 +32,20 @@ social-recovery-sdk/
 │   └── zkjwt/
 │       ├── src/
 │       │   └── main.nr               # ZK circuit: JWT signature + email commitment
-│       └── Nargo.toml
+│       ├── Nargo.toml
+│       └── scripts/                   # TypeScript input generators
+│           ├── src/
+│           │   ├── generate-prover.ts     # CLI: generates Prover.toml (self-signed or Google JWT)
+│           │   ├── utils/
+│           │   │   ├── rsa.ts             # RSA key generation, modulus extraction
+│           │   │   ├── jwt.ts             # JWT creation, verification, circuit input extraction
+│           │   │   ├── poseidon.ts        # Poseidon2 hashing via bb.js
+│           │   │   ├── prover-toml.ts     # Prover.toml serialization
+│           │   │   └── google-jwks.ts     # Google JWKS fetch, JWT header/payload decode
+│           │   └── fixtures/
+│           │       ├── self-signed.ts     # Self-signed JWT fixture (testing)
+│           │       └── google-signed.ts   # Google-signed JWT fixture (real tokens)
+│           └── package.json
 │
 ├── sdk/                          # TypeScript SDK
 │   ├── src/
