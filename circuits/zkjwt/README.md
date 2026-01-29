@@ -29,9 +29,12 @@ zkjwt/
 ├── Prover.toml          # Circuit inputs (generated)
 └── scripts/             # TypeScript input generators
     ├── src/
-    │   ├── generate-prover.ts      # CLI entry point
-    │   ├── utils/                  # RSA, JWT, Poseidon, TOML utilities
-    │   └── fixtures/self-signed.ts # Self-signed JWT generator
+    │   ├── generate-prover.ts        # CLI entry point
+    │   ├── utils/                    # RSA, JWT, Poseidon, TOML utilities
+    │   │   └── google-jwks.ts        # Google JWKS fetch + JWT decode helpers
+    │   └── fixtures/
+    │       ├── self-signed.ts        # Self-signed JWT generator
+    │       └── google-signed.ts      # Google-signed JWT fixture
     └── package.json
 ```
 
@@ -49,6 +52,39 @@ npm run generate -- --email="bob@example.com" --salt=54321 --intent-hash=123
 
 Output: Writes `../Prover.toml` and prints expected commitment.
 
+## Testing with Google-Signed JWT
+
+You can generate `Prover.toml` from a real Google-signed JWT to test the circuit against production keys.
+
+### 1. Obtain a Google `id_token`
+
+1. Go to [Google OAuth Playground](https://developers.google.com/oauthplayground/)
+2. In **Step 1**, select **Google OAuth2 API v2** → `email` and `openid` scopes
+3. Click **Authorize APIs** and sign in with your Google account
+4. In **Step 2**, click **Exchange authorization code for tokens**
+5. Copy the `id_token` from the response
+
+### 2. Generate Prover.toml
+
+```bash
+cd scripts
+
+npm run generate:google -- --jwt="<paste id_token here>" --salt=12345 --intent-hash=1
+```
+
+### 3. Prove and verify
+
+```bash
+cd ..
+nargo execute
+bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target
+bb verify -p ./target/proof -k ./target/vk
+```
+
+**Notes:**
+- The `id_token` expires after ~1 hour, but the circuit does not check expiry — an expired token still works for testing.
+- The JWT must contain an `email` claim. This requires the `email` scope during OAuth authorization.
+
 ## Circuit I/O
 
 **Public Inputs:**
@@ -60,6 +96,5 @@ Output: Writes `../Prover.toml` and prints expected commitment.
 
 ## Notes for Future Work
 
-- **Google JWT integration**: Replace self-signed fixture with real Google OAuth flow. Key difference: must fetch Google's JWKS for public key.
 - **SDK integration**: The `scripts/src/utils/` modules can be adapted for the SDK's `ZkJwtAdapter`.
 - **Commitment pre-computation**: `poseidon.ts` shows how to compute commitments off-chain for guardian registration.

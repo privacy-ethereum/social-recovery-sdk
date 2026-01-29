@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "generate": "tsx src/generate-prover.ts",
-    "generate:self-signed": "tsx src/generate-prover.ts --fixture=self-signed"
+    "generate:self-signed": "tsx src/generate-prover.ts --fixture=self-signed",
+    "generate:google": "tsx src/generate-prover.ts --fixture=google"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
