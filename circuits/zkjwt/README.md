@@ -31,7 +31,11 @@ zkjwt/
     ├── src/
     │   ├── generate-prover.ts        # CLI entry point
     │   ├── utils/                    # RSA, JWT, Poseidon, TOML utilities
-    │   │   └── google-jwks.ts        # Google JWKS fetch + JWT decode helpers
+    │   │   ├── rsa.ts               # RSA key parsing and modulus extraction
+    │   │   ├── jwt.ts               # JWT encoding and signature utilities
+    │   │   ├── poseidon.ts          # Poseidon hash for commitment computation
+    │   │   ├── prover-toml.ts       # Prover.toml generation
+    │   │   └── google-jwks.ts       # Google JWKS fetch + JWT decode helpers
     │   └── fixtures/
     │       ├── self-signed.ts        # Self-signed JWT generator
     │       └── google-signed.ts      # Google-signed JWT fixture
@@ -89,7 +93,7 @@ bb verify -p ./target/proof -k ./target/vk
 
 **Public Inputs:**
 - `pubkey_modulus_limbs` - RSA public key (identifies signing key)
-- `_intent_hash` - Binds proof to specific RecoveryIntent (use 0 for testing)
+- `intent_hash` - Binds proof to specific RecoveryIntent (use 0 for testing)
 
 **Output:**
 - `commitment` - `Poseidon2(email_hash, salt)` identifying the guardian
