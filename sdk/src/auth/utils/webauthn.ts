@@ -348,8 +348,12 @@ function decodeCborMap(bytes: Uint8Array): Map<number, unknown> {
       offset++;
     } else if (valueMajorType === 2) {
       // Byte string
-      const length = valueByte & 0x1f;
+      let length = valueByte & 0x1f;
       offset++;
+      if (length === 24) {
+        // 1-byte length follows (for lengths 24-255, e.g. 32-byte P-256 coordinates)
+        length = bytes[offset++];
+      }
       result.set(key, bytes.slice(offset, offset + length));
       offset += length;
     } else {
