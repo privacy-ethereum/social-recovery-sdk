@@ -33,13 +33,20 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 
 ---
 
-## Phase 2: zkJWT & Core Contracts (In Progress)
+## Phase 2: zkJWT & Core Contracts ✅
 
 **Circuits:**
 - `zkjwt/main.nr` - JWT signature verification + email commitment computation
 - Unit tests: 3 tests (packing, commitment, multi-field uniqueness)
 - Integration test with self-signed JWT ([circuits/zkjwt/scripts/](./circuits/zkjwt/scripts/)) - generates valid Prover.toml inputs
 - Integration test with Google-signed JWT - fetches Google JWKS, generates Prover.toml from real OAuth `id_token`
+
+**Contracts:**
+- `HonkVerifier.sol` - Auto-generated Noir proof verifier (from bb tooling)
+- `ZkJwtVerifier.sol` - Wraps HonkVerifier, implements IVerifier for zkJWT proofs
+- `RecoveryManager.sol` - Core contract: policy management, session lifecycle, proof verification, execution
+- `RecoveryManagerFactory.sol` - Deploys RecoveryManager proxies (EIP-1167 minimal proxy)
+- Unit tests: 90 tests (RecoveryManager, RecoveryManagerFactory, ZkJwtVerifier)
 
 **Dependencies:**
 - Added `noir-jwt` v0.5.1 for RS256 JWT verification

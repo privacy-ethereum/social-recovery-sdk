@@ -1,66 +1,73 @@
-## Foundry
+# Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Solidity smart contracts for social recovery. Manages guardian policies, recovery sessions, and on-chain proof verification.
 
-Foundry consists of:
+## Quick Start
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```bash
+forge install && forge build && forge test
 ```
 
-### Test
+## Directory Structure
 
-```shell
-$ forge test
+```
+contracts/
+├── src/
+│   ├── RecoveryManager.sol              # Core contract (one per wallet)
+│   ├── RecoveryManagerFactory.sol       # Deploys RecoveryManager proxies (EIP-1167)
+│   ├── interfaces/
+│   │   ├── IRecoveryManager.sol         # RecoveryManager interface (events, errors, functions)
+│   │   ├── IVerifier.sol                # Common verifier interface
+│   │   └── IWallet.sol                  # Wallet integration interface
+│   ├── libraries/
+│   │   ├── GuardianLib.sol              # Guardian types and identifier computation
+│   │   └── EIP712Lib.sol                # EIP-712 typed data hashing for RecoveryIntent
+│   └── verifiers/
+│       ├── PasskeyVerifier.sol          # WebAuthn/P-256 signature verification
+│       ├── ZkJwtVerifier.sol            # Wraps HonkVerifier, implements IVerifier
+│       └── HonkVerifier.sol             # Auto-generated Noir proof verifier
+└── test/
+    ├── RecoveryManager.t.sol            # RecoveryManager tests (~63 tests)
+    ├── RecoveryManagerFactory.t.sol      # Factory tests (~10 tests)
+    ├── ZkJwtVerifier.t.sol              # ZkJwtVerifier tests (~8 tests)
+    ├── PasskeyVerifier.t.sol            # PasskeyVerifier tests
+    ├── EIP712Lib.t.sol                  # EIP-712 library tests
+    └── GuardianLib.t.sol                # Guardian library tests
 ```
 
-### Format
+## Architecture
 
-```shell
-$ forge fmt
+```
+Wallet
+  │ authorized to execute
+  ▼
+RecoveryManager (one per wallet, EIP-1167 proxy)
+  │ delegates proof verification
+  ├── EOA: ecrecover (built-in)
+  ├── PasskeyVerifier (shared singleton)
+  └── ZkJwtVerifier → HonkVerifier (shared singletons)
 ```
 
-### Gas Snapshots
+## Regenerating HonkVerifier.sol
 
-```shell
-$ forge snapshot
+If the Noir circuit changes, regenerate the Solidity verifier:
+
+```bash
+# Build circuit
+cd ../circuits/zkjwt && nargo build
+
+# Generate EVM-targeted verification key
+bb write_vk -b target/zkjwt.json -o /tmp/zkjwt-vk-evm -t evm
+
+# Generate Solidity verifier
+bb write_solidity_verifier -k /tmp/zkjwt-vk-evm/vk -o ../contracts/src/verifiers/HonkVerifier.sol -t evm
 ```
 
-### Anvil
+After regeneration, rename the generated `interface IVerifier` to `interface IZKVerifier` and update `BaseZKHonkVerifier is IVerifier` to `BaseZKHonkVerifier is IZKVerifier` to avoid collision with `interfaces/IVerifier.sol`.
 
-```shell
-$ anvil
-```
+## Deployment Order
 
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+1. Deploy shared verifiers (`PasskeyVerifier`, `ZkJwtVerifier` + `HonkVerifier`)
+2. Deploy `RecoveryManager` implementation
+3. Deploy `RecoveryManagerFactory` (with impl + verifier addresses)
+4. Per wallet: call factory to deploy a `RecoveryManager` proxy
