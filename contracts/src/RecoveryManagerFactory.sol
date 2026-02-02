@@ -17,6 +17,7 @@ contract RecoveryManagerFactory {
     event RecoveryManagerDeployed(address indexed wallet, address indexed recoveryManager);
 
     error DeploymentFailed();
+    error AlreadyDeployed();
 
     constructor(address _implementation, address _passkeyVerifier, address _zkJwtVerifier) {
         implementation = _implementation;
@@ -36,6 +37,8 @@ contract RecoveryManagerFactory {
         uint256 _threshold,
         uint256 _challengePeriod
     ) external returns (address proxy) {
+        if (getRecoveryManager[_wallet] != address(0)) revert AlreadyDeployed();
+
         // Deploy EIP-1167 minimal proxy
         proxy = _clone(implementation);
 

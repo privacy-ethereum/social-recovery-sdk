@@ -4,7 +4,7 @@
  *
  * Usage:
  *   npm run generate
- *   npm run generate -- --email="test@example.com" --salt=12345 --intent-hash=0
+ *   npm run generate -- --email="test@example.com" --salt=12345 --intent-hash=42
  *   npm run generate:google -- --jwt="<google id_token>" --salt=12345 --intent-hash=1
  */
 import path from "path";

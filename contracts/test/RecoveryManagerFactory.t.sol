@@ -121,6 +121,14 @@ contract RecoveryManagerFactoryTest is Test {
         assertEq(factory.getRecoveryManager(address(wallet2)), proxy2);
     }
 
+    function test_deployRecoveryManager_revertsOnDuplicate() public {
+        GuardianLib.Guardian[] memory guardians = _createGuardians(1);
+        factory.deployRecoveryManager(address(wallet), guardians, 1, 1 days);
+
+        vm.expectRevert(RecoveryManagerFactory.AlreadyDeployed.selector);
+        factory.deployRecoveryManager(address(wallet), guardians, 1, 1 days);
+    }
+
     function test_implementation_cannotBeReinitialized() public {
         GuardianLib.Guardian[] memory guardians = _createGuardians(1);
 

@@ -51,7 +51,7 @@ cd scripts
 npm run generate
 
 # Custom values
-npm run generate -- --email="bob@example.com" --salt=54321 --intent-hash=123
+npm run generate -- --email="bob@example.com" --salt=54321 --intent-hash=42
 ```
 
 Output: Writes `../Prover.toml` and prints expected commitment.
@@ -93,7 +93,7 @@ bb verify -p ./target/proof -k ./target/vk
 
 **Public Inputs:**
 - `pubkey_modulus_limbs` - RSA public key (identifies signing key)
-- `intent_hash` - Binds proof to specific RecoveryIntent (use 0 for testing)
+- `intent_hash` - Binds proof to specific RecoveryIntent (must be non-zero)
 
 **Output:**
 - `commitment` - `Poseidon2(email_hash, salt)` identifying the guardian
