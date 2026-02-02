@@ -290,7 +290,7 @@ contract RecoveryManager is IRecoveryManager {
         uint256 newChallengePeriod
     ) internal {
         // Validate policy
-        if (newGuardians.length == 0) revert InvalidPolicy();
+        if (newGuardians.length == 0 || newGuardians.length > type(uint8).max) revert InvalidPolicy();
         if (newThreshold == 0 || newThreshold > newGuardians.length) revert InvalidPolicy();
 
         // Validate each guardian and check for duplicates (O(n^2), acceptable for small n)

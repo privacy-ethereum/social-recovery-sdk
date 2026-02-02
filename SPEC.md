@@ -200,7 +200,7 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 - **Challenge period starts when threshold is met**, not when session starts
 - **Only guardians can initiate** recovery (prevents griefing)
 - **Anyone can execute** after challenge period (typically last guardian or relayer)
-- **Owner can cancel** during challenge period
+- **Owner can cancel** any time while a session is active
 - **Nonce prevents replay** — proofs bound to specific session
 
 ### 5.4 Policy Updates
@@ -260,7 +260,7 @@ For zkJWT, the EIP-712 hash of RecoveryIntent is passed as `intent_hash` public 
    - Each verified proof recorded
    - When threshold met, challenge period starts
 
-3. **Challenge Period**: Owner can `cancelRecovery()` if they regain access
+3. **Challenge Period**: Owner can `cancelRecovery()` any time while a session is active
 
 4. **Execute**: After challenge period, anyone calls `executeRecovery()`
    - RecoveryManager sets newOwner as authorized in wallet
@@ -320,7 +320,7 @@ SDK handles on-chain ownership change. Wallet UI must handle:
 
 Primary defense against unauthorized recovery:
 - Owner monitors for `RecoveryStarted` events
-- Owner calls `cancelRecovery()` during window
+- Owner calls `cancelRecovery()` any time while a session is active
 - Recommended: 1-7 days depending on wallet value (0 allowed for testing)
 
 ---

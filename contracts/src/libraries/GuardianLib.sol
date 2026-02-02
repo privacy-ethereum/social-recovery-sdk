@@ -60,6 +60,14 @@ library GuardianLib {
             return false;
         }
 
+        // EOA identifiers must be canonically encoded (lower 160 bits only)
+        // Prevents multiple identifiers mapping to the same address via identifierToAddress
+        if (guardian.guardianType == GuardianType.EOA) {
+            if (guardian.identifier != computeEoaIdentifier(identifierToAddress(guardian.identifier))) {
+                return false;
+            }
+        }
+
         return true;
     }
 }

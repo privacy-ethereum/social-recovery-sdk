@@ -133,6 +133,32 @@ contract GuardianLibTest is Test {
         assertFalse(GuardianLib.isValidGuardian(guardian));
     }
 
+    function test_isValidGuardian_nonCanonicalEoa() public pure {
+        // Upper bits set — same address as address(1) but non-canonical bytes32
+        bytes32 nonCanonical = bytes32(uint256(1) | (uint256(0xFF) << 160));
+        GuardianLib.Guardian memory guardian = GuardianLib.Guardian({
+            guardianType: GuardianLib.GuardianType.EOA,
+            identifier: nonCanonical
+        });
+
+        assertFalse(GuardianLib.isValidGuardian(guardian));
+    }
+
+    function testFuzz_isValidGuardian_nonCanonicalEoa(bytes32 junk, address addr) public pure {
+        vm.assume(addr != address(0));
+        // Force upper 96 bits to be non-zero
+        uint256 upper = uint256(junk) >> 160;
+        vm.assume(upper != 0);
+        bytes32 nonCanonical = bytes32((upper << 160) | uint256(uint160(addr)));
+
+        GuardianLib.Guardian memory guardian = GuardianLib.Guardian({
+            guardianType: GuardianLib.GuardianType.EOA,
+            identifier: nonCanonical
+        });
+
+        assertFalse(GuardianLib.isValidGuardian(guardian));
+    }
+
     function test_guardianTypeValues() public pure {
         // Verify enum values match spec
         assertEq(uint8(GuardianLib.GuardianType.EOA), 0);

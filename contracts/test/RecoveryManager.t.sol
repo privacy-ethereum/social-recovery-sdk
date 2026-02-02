@@ -750,6 +750,34 @@ contract RecoveryManager_UpdatePolicy is RecoveryManagerTestBase {
         rm.updatePolicy(newGuardians, 1, 1 days);
     }
 
+    function test_updatePolicy_revertsOnInvalidPolicy_tooManyGuardians() public {
+        // 256 guardians exceeds uint8 max (255)
+        GuardianLib.Guardian[] memory newGuardians = new GuardianLib.Guardian[](256);
+        for (uint256 i = 0; i < 256; i++) {
+            newGuardians[i] = GuardianLib.Guardian(
+                GuardianLib.GuardianType.EOA,
+                bytes32(uint256(uint160(address(uint160(i + 1)))))
+            );
+        }
+
+        vm.prank(walletOwner);
+        vm.expectRevert(IRecoveryManager.InvalidPolicy.selector);
+        rm.updatePolicy(newGuardians, 1, 1 days);
+    }
+
+    function test_updatePolicy_revertsOnInvalidPolicy_nonCanonicalEoa() public {
+        GuardianLib.Guardian[] memory newGuardians = new GuardianLib.Guardian[](1);
+        // Upper bits set — non-canonical EOA identifier
+        newGuardians[0] = GuardianLib.Guardian(
+            GuardianLib.GuardianType.EOA,
+            bytes32(uint256(1) | (uint256(0xFF) << 160))
+        );
+
+        vm.prank(walletOwner);
+        vm.expectRevert(IRecoveryManager.InvalidPolicy.selector);
+        rm.updatePolicy(newGuardians, 1, 1 days);
+    }
+
     function test_updatePolicy_revertsOnInvalidPolicy_zeroIdentifier() public {
         GuardianLib.Guardian[] memory newGuardians = new GuardianLib.Guardian[](1);
         newGuardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, bytes32(0));

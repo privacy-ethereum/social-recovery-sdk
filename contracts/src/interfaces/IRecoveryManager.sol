@@ -162,7 +162,7 @@ interface IRecoveryManager {
     function executeRecovery() external;
 
     /// @notice Cancels the active recovery session
-    /// @dev Only callable by the wallet owner during the challenge period
+    /// @dev Only callable by the wallet owner while a session is active
     function cancelRecovery() external;
 
     // ============ Policy Functions ============
