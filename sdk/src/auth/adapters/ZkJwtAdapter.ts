@@ -1,7 +1,7 @@
 import { encodeAbiParameters, pad, toHex } from 'viem';
 import type { Hex } from 'viem';
 import type { IAuthAdapter, ProofResult } from './IAuthAdapter';
-import type { GuardianType, RecoveryIntent } from '../../types';
+import { GuardianType, type RecoveryIntent } from '../../types';
 import { hashRecoveryIntent } from '../utils/eip712';
 import {
   initBarretenberg,
@@ -29,7 +29,7 @@ export async function computeZkJwtIdentifier(email: string, salt: bigint): Promi
 }
 
 export class ZkJwtAdapter implements IAuthAdapter {
-  readonly guardianType: GuardianType = 2; // ZkJWT
+  readonly guardianType: GuardianType = GuardianType.ZkJWT;
 
   private readonly config: ZkJwtAdapterConfig;
 
@@ -38,8 +38,9 @@ export class ZkJwtAdapter implements IAuthAdapter {
   }
 
   /**
-   * Computes the guardian identifier from email and salt
-   * Requires initBarretenberg() to have been called first
+   * Computes the guardian identifier from email and salt.
+   * This method is synchronous — it throws if initBarretenberg() has not been called.
+   * For a standalone async version, use the exported computeZkJwtIdentifier() function.
    */
   computeIdentifier(credentials: { email: string; salt: bigint }): Hex {
     const bb = getBarretenberg();
@@ -81,8 +82,15 @@ export class ZkJwtAdapter implements IAuthAdapter {
       // Extract JWT circuit inputs
       const jwtInputs = extractJwtInputs(this.config.jwt, jwk);
 
-      // Prepare email bytes
+      // Prepare email bytes and validate length against circuit limit
+      const MAX_EMAIL_LENGTH = 128;
       const emailBytes = Array.from(new TextEncoder().encode(email));
+      if (emailBytes.length > MAX_EMAIL_LENGTH) {
+        return {
+          success: false,
+          error: `Email exceeds maximum length of ${MAX_EMAIL_LENGTH} bytes (got ${emailBytes.length})`,
+        };
+      }
 
       // Compute intent hash
       const intentHash = hashRecoveryIntent(intent);

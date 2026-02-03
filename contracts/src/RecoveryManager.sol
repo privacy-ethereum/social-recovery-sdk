@@ -11,6 +11,11 @@ import {EIP712Lib} from "./libraries/EIP712Lib.sol";
 /// @notice One instance per wallet, manages recovery sessions and proof verification
 /// @dev Deployed as EIP-1167 proxies via RecoveryManagerFactory
 contract RecoveryManager is IRecoveryManager {
+    // ============ Errors ============
+
+    error AlreadyInitialized();
+    error ZeroWallet();
+
     // ============ Storage ============
 
     bool private _initialized;
@@ -52,8 +57,8 @@ contract RecoveryManager is IRecoveryManager {
         address _passkeyVerifier,
         address _zkJwtVerifier
     ) external {
-        require(!_initialized, "already initialized");
-        require(_wallet != address(0), "zero wallet");
+        if (_initialized) revert AlreadyInitialized();
+        if (_wallet == address(0)) revert ZeroWallet();
         _initialized = true;
 
         wallet = _wallet;
@@ -72,7 +77,7 @@ contract RecoveryManager is IRecoveryManager {
 
     /// @inheritdoc IRecoveryManager
     function getGuardian(uint256 index) external view override returns (GuardianLib.Guardian memory) {
-        require(index < _guardians.length, "index out of bounds");
+        if (index >= _guardians.length) revert GuardianNotFound();
         return _guardians[index];
     }
 

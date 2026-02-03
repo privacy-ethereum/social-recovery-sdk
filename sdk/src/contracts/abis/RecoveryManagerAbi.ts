@@ -276,6 +276,7 @@ export const RecoveryManagerAbi = [
     ],
     anonymous: false,
   },
+  { type: 'error', name: 'AlreadyInitialized', inputs: [] },
   { type: 'error', name: 'ChallengePeriodNotElapsed', inputs: [] },
   { type: 'error', name: 'GuardianAlreadyApproved', inputs: [] },
   { type: 'error', name: 'GuardianNotFound', inputs: [] },
@@ -287,4 +288,5 @@ export const RecoveryManagerAbi = [
   { type: 'error', name: 'RecoveryNotActive', inputs: [] },
   { type: 'error', name: 'ThresholdNotMet', inputs: [] },
   { type: 'error', name: 'Unauthorized', inputs: [] },
+  { type: 'error', name: 'ZeroWallet', inputs: [] },
 ] as const;

@@ -132,7 +132,7 @@ contract RecoveryManagerFactoryTest is Test {
     function test_implementation_cannotBeReinitialized() public {
         GuardianLib.Guardian[] memory guardians = _createGuardians(1);
 
-        vm.expectRevert("already initialized");
+        vm.expectRevert(RecoveryManager.AlreadyInitialized.selector);
         implementation.initialize(
             address(wallet),
             guardians,
@@ -147,7 +147,7 @@ contract RecoveryManagerFactoryTest is Test {
         GuardianLib.Guardian[] memory guardians = _createGuardians(1);
         address proxy = factory.deployRecoveryManager(address(wallet), guardians, 1, 1 days);
 
-        vm.expectRevert("already initialized");
+        vm.expectRevert(RecoveryManager.AlreadyInitialized.selector);
         RecoveryManager(proxy).initialize(
             address(wallet),
             guardians,

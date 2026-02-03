@@ -1,7 +1,7 @@
 import { encodeAbiParameters, keccak256, encodePacked, toHex, hexToBytes } from 'viem';
 import type { Hex } from 'viem';
 import type { IAuthAdapter, ProofResult } from './IAuthAdapter';
-import type { GuardianType, RecoveryIntent, P256PublicKey } from '../../types';
+import { GuardianType, type RecoveryIntent, type P256PublicKey } from '../../types';
 import { hashRecoveryIntent } from '../utils/eip712';
 import {
   getPasskeyAssertion,
@@ -26,7 +26,7 @@ export interface PasskeyAdapterConfig {
  * Used by guardians who authenticate via passkeys
  */
 export class PasskeyAdapter implements IAuthAdapter {
-  readonly guardianType: GuardianType = 1; // Passkey
+  readonly guardianType: GuardianType = GuardianType.Passkey;
 
   private readonly config: PasskeyAdapterConfig;
 

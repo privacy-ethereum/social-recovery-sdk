@@ -2,7 +2,7 @@ import type { Address, Hex, PublicClient, WalletClient } from 'viem';
 import { RecoveryManagerContract } from '../contracts/RecoveryManagerContract';
 import { FactoryContract } from '../contracts/FactoryContract';
 import { AuthManager } from '../auth/AuthManager';
-import { createRecoveryIntent, isValidIntent } from '../auth/utils/eip712';
+import { isValidIntent } from '../auth/utils/eip712';
 import type { Guardian, RecoveryIntent, RecoverySession, RecoveryPolicy, GuardianProof } from '../types';
 
 export interface RecoveryClientConfig {
@@ -77,30 +77,17 @@ export class RecoveryClient {
   // --- Recovery Flow ---
 
   async startRecovery(params: {
-    newOwner: Address;
+    intent: RecoveryIntent;
     guardianIndex: bigint;
     proof: GuardianProof;
-    deadlineSeconds?: number;
   }): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
 
-    const nonce = await rm.nonce();
-    const chainId = BigInt(await this.publicClient.getChainId());
-
-    const intent = createRecoveryIntent({
-      wallet: await rm.wallet(),
-      newOwner: params.newOwner,
-      recoveryManager: rm.address,
-      nonce,
-      chainId,
-      deadlineSeconds: params.deadlineSeconds,
-    });
-
-    if (!isValidIntent(intent)) {
-      throw new Error('Generated intent is invalid');
+    if (!isValidIntent(params.intent)) {
+      throw new Error('Recovery intent is invalid');
     }
 
-    return rm.startRecovery(intent, params.guardianIndex, params.proof.proof);
+    return rm.startRecovery(params.intent, params.guardianIndex, params.proof.proof);
   }
 
   async submitProof(params: { guardianIndex: bigint; proof: GuardianProof }): Promise<Hex> {

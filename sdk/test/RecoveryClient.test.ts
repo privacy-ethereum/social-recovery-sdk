@@ -85,6 +85,72 @@ describe('RecoveryClient', () => {
     });
   });
 
+  describe('startRecovery', () => {
+    it('should forward intent and proof to recovery manager', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const intent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + 86400),
+        chainId: 1n,
+        recoveryManager: RM_ADDRESS,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: 0 as any,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      const txHash = await client.startRecovery({
+        intent,
+        guardianIndex: 0n,
+        proof,
+      });
+
+      expect(txHash).toBe('0xtxhash');
+    });
+
+    it('should reject an invalid intent', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const expiredIntent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: 0n, // expired
+        chainId: 1n,
+        recoveryManager: RM_ADDRESS,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: 0 as any,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(
+        client.startRecovery({ intent: expiredIntent, guardianIndex: 0n, proof }),
+      ).rejects.toThrow('invalid');
+    });
+  });
+
   describe('query methods with recovery manager', () => {
     it('should forward getSession to contract', async () => {
       const publicClient = createMockPublicClient();

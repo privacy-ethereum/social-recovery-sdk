@@ -1,7 +1,7 @@
 import { encodeAbiParameters, parseSignature, pad } from 'viem';
 import type { Hex, WalletClient, Address } from 'viem';
 import type { IAuthAdapter, ProofResult } from './IAuthAdapter';
-import type { GuardianType, RecoveryIntent } from '../../types';
+import { GuardianType, type RecoveryIntent } from '../../types';
 import { EIP712_DOMAIN, RECOVERY_INTENT_TYPES } from '../../constants';
 
 export interface EoaAdapterConfig {
@@ -9,7 +9,7 @@ export interface EoaAdapterConfig {
 }
 
 export class EoaAdapter implements IAuthAdapter {
-  readonly guardianType: GuardianType = 0; // EOA
+  readonly guardianType: GuardianType = GuardianType.EOA;
 
   private readonly config: EoaAdapterConfig;
 

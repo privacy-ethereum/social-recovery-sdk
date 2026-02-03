@@ -142,5 +142,28 @@ describe('PolicyBuilder', () => {
           .build();
       }).toThrow('Threshold cannot exceed number of guardians');
     });
+
+    it('should throw on zero identifier', () => {
+      expect(() => {
+        new PolicyBuilder()
+          .setWallet(testWallet)
+          .addZkJwtGuardian(
+            '0x0000000000000000000000000000000000000000000000000000000000000000',
+          )
+          .setThreshold(1)
+          .build();
+      }).toThrow('zero identifier');
+    });
+
+    it('should throw on duplicate guardian identifiers', () => {
+      expect(() => {
+        new PolicyBuilder()
+          .setWallet(testWallet)
+          .addEoaGuardian(eoaAddress)
+          .addEoaGuardian(eoaAddress)
+          .setThreshold(1)
+          .build();
+      }).toThrow('Duplicate guardian identifier');
+    });
   });
 });

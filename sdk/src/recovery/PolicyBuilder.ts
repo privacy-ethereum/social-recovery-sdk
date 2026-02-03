@@ -62,6 +62,18 @@ export class PolicyBuilder {
       throw new Error('Threshold cannot exceed number of guardians');
     }
 
+    const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+    for (let i = 0; i < this._guardians.length; i++) {
+      if (this._guardians[i].identifier === ZERO_BYTES32) {
+        throw new Error(`Guardian at index ${i} has a zero identifier`);
+      }
+      for (let j = 0; j < i; j++) {
+        if (this._guardians[i].identifier === this._guardians[j].identifier) {
+          throw new Error(`Duplicate guardian identifier at indices ${j} and ${i}`);
+        }
+      }
+    }
+
     return {
       wallet: this._wallet,
       threshold: this._threshold,

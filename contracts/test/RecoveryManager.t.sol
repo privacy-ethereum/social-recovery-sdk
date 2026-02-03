@@ -180,7 +180,7 @@ contract RecoveryManager_Initialization is RecoveryManagerTestBase {
 
     function test_initialize_revertsOnDoubleInit() public {
         GuardianLib.Guardian[] memory guardians = _createEoaGuardians3();
-        vm.expectRevert("already initialized");
+        vm.expectRevert(RecoveryManager.AlreadyInitialized.selector);
         rm.initialize(address(wallet), guardians, 2, 1 days, address(passkeyVerifier), address(zkJwtVerifier));
     }
 
@@ -189,7 +189,7 @@ contract RecoveryManager_Initialization is RecoveryManagerTestBase {
         RecoveryManager proxy = RecoveryManager(_deployProxy(address(impl)));
         GuardianLib.Guardian[] memory guardians = _createEoaGuardians3();
 
-        vm.expectRevert("zero wallet");
+        vm.expectRevert(RecoveryManager.ZeroWallet.selector);
         proxy.initialize(address(0), guardians, 2, 1 days, address(passkeyVerifier), address(zkJwtVerifier));
     }
 
@@ -1052,7 +1052,7 @@ contract RecoveryManager_MixedGuardians is RecoveryManagerTestBase {
 
 contract RecoveryManager_EdgeCases is RecoveryManagerTestBase {
     function test_getGuardian_revertsOnOutOfBounds() public {
-        vm.expectRevert("index out of bounds");
+        vm.expectRevert(IRecoveryManager.GuardianNotFound.selector);
         rm.getGuardian(10);
     }
 
