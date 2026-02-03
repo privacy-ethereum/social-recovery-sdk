@@ -17,7 +17,8 @@ social-recovery-sdk/
 │   │   ├── RecoveryManagerFactory.sol # Deploys RecoveryManager proxies (EIP-1167)
 │   │   ├── verifiers/
 │   │   │   ├── PasskeyVerifier.sol   # WebAuthn/P-256 signature verification
-│   │   │   └── ZkJwtVerifier.sol     # Noir ZK proof verification for JWT auth
+│   │   │   ├── ZkJwtVerifier.sol     # Noir ZK proof verification for JWT auth
+│   │   │   └── HonkVerifier.sol      # Auto-generated Noir proof verifier (via bb)
 │   │   ├── interfaces/
 │   │   │   ├── IRecoveryManager.sol  # RecoveryManager interface
 │   │   │   ├── IVerifier.sol         # Common verifier interface
@@ -25,8 +26,13 @@ social-recovery-sdk/
 │   │   └── libraries/
 │   │       ├── GuardianLib.sol       # Guardian struct, encoding helpers
 │   │       └── EIP712Lib.sol         # EIP-712 typed data hashing
-│   ├── test/                         # Foundry tests
-│   └── script/                       # Deployment scripts
+│   └── test/
+│       ├── RecoveryManager.t.sol        # Core recovery flow tests
+│       ├── RecoveryManagerFactory.t.sol # Factory deployment tests
+│       ├── PasskeyVerifier.t.sol        # Passkey verifier tests
+│       ├── ZkJwtVerifier.t.sol          # zkJWT verifier tests
+│       ├── GuardianLib.t.sol            # Guardian library tests
+│       └── EIP712Lib.t.sol              # EIP-712 library tests
 │
 ├── circuits/                     # Noir circuits for zkJWT
 │   └── zkjwt/
