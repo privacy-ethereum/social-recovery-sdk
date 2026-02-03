@@ -4,12 +4,16 @@ import { initBarretenberg } from '../src/auth/utils/zkjwt/poseidon';
 import type { RecoveryIntent } from '../src/types';
 
 // Mock the circuit proof generation (actual proving is too slow for unit tests)
-vi.mock('../src/auth/utils/zkjwt/circuit', () => ({
-  generateZkJwtProof: vi.fn().mockResolvedValue({
-    rawProof: new Uint8Array(64).fill(0xab),
-    publicInputs: ['0x1234'],
-  }),
-}));
+vi.mock('../src/auth/utils/zkjwt/circuit', async (importOriginal) => {
+  const original = (await importOriginal()) as any;
+  return {
+    ...original,
+    generateZkJwtProof: vi.fn().mockResolvedValue({
+      rawProof: new Uint8Array(64).fill(0xab),
+      publicInputs: ['0x1234'],
+    }),
+  };
+});
 
 // Mock Google JWKS fetch
 vi.mock('../src/auth/utils/zkjwt/google-jwks', async (importOriginal) => {

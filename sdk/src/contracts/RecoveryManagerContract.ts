@@ -185,6 +185,23 @@ export class RecoveryManagerContract {
     });
   }
 
+  async clearExpiredRecovery(): Promise<Hex> {
+    if (!this.walletClient) {
+      throw new Error('WalletClient required for write operations');
+    }
+    const account = this.walletClient.account;
+    if (!account) {
+      throw new Error('WalletClient has no account attached');
+    }
+    return this.walletClient.writeContract({
+      account,
+      address: this.address,
+      abi: RecoveryManagerAbi,
+      functionName: 'clearExpiredRecovery',
+      chain: this.walletClient.chain,
+    });
+  }
+
   async updatePolicy(guardians: Guardian[], threshold: bigint, challengePeriod: bigint): Promise<Hex> {
     if (!this.walletClient) {
       throw new Error('WalletClient required for write operations');

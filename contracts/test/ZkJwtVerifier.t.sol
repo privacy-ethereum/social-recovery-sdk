@@ -20,9 +20,12 @@ contract MockHonkVerifier {
 
 /// @dev Mock HonkVerifier that validates expected public inputs (view-compatible)
 contract ValidatingHonkVerifier {
+    uint256 constant BN254_SCALAR_FIELD_MODULUS =
+        21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
     /// @dev Validates that public inputs match the expected layout:
     ///      [0..17] modulus limbs = i+1 for each i
-    ///      [18] = intentHash
+    ///      [18] = intentHash reduced mod BN254 scalar field
     ///      [19] = guardianIdentifier (commitment)
     function verify(bytes calldata, bytes32[] calldata publicInputs) external pure returns (bool) {
         require(publicInputs.length == 20, "wrong public inputs length");
@@ -32,8 +35,8 @@ contract ValidatingHonkVerifier {
             require(publicInputs[i] == bytes32(uint256(i + 1)), "wrong modulus limb");
         }
 
-        // Validate intentHash at [18]
-        require(publicInputs[18] == bytes32(uint256(0xcafebabe)), "wrong intent hash");
+        // Validate intentHash at [18] — reduced mod BN254 scalar field
+        require(publicInputs[18] == bytes32(uint256(0xcafebabe) % BN254_SCALAR_FIELD_MODULUS), "wrong intent hash");
 
         // Validate commitment at [19]
         require(publicInputs[19] == bytes32(uint256(0xdeadbeef)), "wrong commitment");
@@ -48,6 +51,21 @@ contract ProofValidatingHonkVerifier {
         // Validate the raw proof matches expected bytes
         bytes memory expected = hex"deadbeefcafebabe1234567890";
         require(keccak256(proof) == keccak256(expected), "wrong raw proof");
+        return true;
+    }
+}
+
+/// @dev Mock HonkVerifier that validates intent hash was reduced to a specific value
+contract FieldReductionValidatingHonkVerifier {
+    uint256 public immutable expectedIntentHash;
+
+    constructor(uint256 _expectedIntentHash) {
+        expectedIntentHash = _expectedIntentHash;
+    }
+
+    function verify(bytes calldata, bytes32[] calldata publicInputs) external view returns (bool) {
+        require(publicInputs.length == 20, "wrong public inputs length");
+        require(uint256(publicInputs[18]) == expectedIntentHash, "intent hash not correctly reduced");
         return true;
     }
 }
@@ -140,6 +158,37 @@ contract ZkJwtVerifierTest is Test {
     function test_constants() public view {
         assertEq(verifier.NUM_PUBLIC_INPUTS(), 20);
         assertEq(verifier.NUM_MODULUS_LIMBS(), 18);
+        assertEq(
+            verifier.BN254_SCALAR_FIELD_MODULUS(),
+            21888242871839275222246405745257275088548364400416034343698204186575808495617
+        );
+    }
+
+    function test_verify_intentHashReduction() public {
+        // Intent hash that exceeds BN254 scalar field modulus
+        // This tests that the verifier correctly reduces it
+        uint256 largeHash = type(uint256).max; // 2^256 - 1
+        uint256 expectedReduced = largeHash % 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
+        // Deploy a mock that validates the reduced value
+        FieldReductionValidatingHonkVerifier validator = new FieldReductionValidatingHonkVerifier(expectedReduced);
+        ZkJwtVerifier reductionVerifier = new ZkJwtVerifier(address(validator));
+
+        bytes memory proof = _buildProof();
+        bool result = reductionVerifier.verify(GUARDIAN_ID, bytes32(largeHash), proof);
+        assertTrue(result);
+    }
+
+    function test_verify_intentHashSmallValue_noReduction() public {
+        // Intent hash smaller than BN254 modulus — should pass through unchanged
+        uint256 smallHash = 42;
+
+        FieldReductionValidatingHonkVerifier validator = new FieldReductionValidatingHonkVerifier(smallHash);
+        ZkJwtVerifier reductionVerifier = new ZkJwtVerifier(address(validator));
+
+        bytes memory proof = _buildProof();
+        bool result = reductionVerifier.verify(GUARDIAN_ID, bytes32(smallHash), proof);
+        assertTrue(result);
     }
 
     function _buildProof() internal pure returns (bytes memory) {

@@ -25,6 +25,9 @@ export interface ZkJwtInputs {
   salt: bigint;
   // Public inputs
   pubkey_modulus_limbs: bigint[];
+  /** Must be a valid BN254 scalar field element (< 2^254 approx).
+   *  When using a real EIP-712 hash (256-bit), reduce modulo the BN254 scalar
+   *  field modulus first: intentHash % 21888242871839275222246405745257275088548364400416034343698204186575808495617n */
   intent_hash: bigint;
 }
 

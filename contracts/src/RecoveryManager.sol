@@ -237,6 +237,23 @@ contract RecoveryManager is IRecoveryManager {
         emit RecoveryCancelled(intentHash, wallet);
     }
 
+    /// @inheritdoc IRecoveryManager
+    function clearExpiredRecovery() external override {
+        // Must have active session
+        if (_sessionIntentHash == bytes32(0)) revert RecoveryNotActive();
+
+        // Deadline must have passed
+        if (block.timestamp < uint256(_sessionDeadline)) revert DeadlineNotReached();
+
+        bytes32 intentHash = _sessionIntentHash;
+
+        // Clear session and increment nonce
+        _clearSession();
+        nonce++;
+
+        emit RecoveryCancelled(intentHash, wallet);
+    }
+
     // ============ Policy Functions ============
 
     /// @inheritdoc IRecoveryManager

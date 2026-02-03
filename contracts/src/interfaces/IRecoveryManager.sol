@@ -91,6 +91,9 @@ interface IRecoveryManager {
     /// @notice The guardian is not in the policy
     error GuardianNotFound();
 
+    /// @notice The session deadline has not been reached yet
+    error DeadlineNotReached();
+
     // ============ View Functions ============
 
     /// @notice Returns the wallet this RecoveryManager protects
@@ -164,6 +167,12 @@ interface IRecoveryManager {
     /// @notice Cancels the active recovery session
     /// @dev Only callable by the wallet owner while a session is active
     function cancelRecovery() external;
+
+    /// @notice Clears an expired recovery session so a new one can start
+    /// @dev Callable by anyone after the session deadline has passed.
+    ///      An expired session can never be executed, so clearing it is safe.
+    ///      This prevents deadlocks when the owner has lost their keys.
+    function clearExpiredRecovery() external;
 
     // ============ Policy Functions ============
 

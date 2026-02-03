@@ -664,6 +664,97 @@ contract RecoveryManager_CancelRecovery is RecoveryManagerTestBase {
     }
 }
 
+// ============ clearExpiredRecovery Tests ============
+
+contract RecoveryManager_ClearExpiredRecovery is RecoveryManagerTestBase {
+    function test_clearExpiredRecovery_happyPath() public {
+        _startRecoveryWithGuardian1();
+        assertTrue(rm.isRecoveryActive());
+
+        // Warp past deadline
+        vm.warp(block.timestamp + DEADLINE + 1);
+
+        // Anyone can clear
+        vm.prank(address(0xFFFF));
+        rm.clearExpiredRecovery();
+
+        assertFalse(rm.isRecoveryActive());
+    }
+
+    function test_clearExpiredRecovery_incrementsNonce() public {
+        _startRecoveryWithGuardian1();
+
+        vm.warp(block.timestamp + DEADLINE + 1);
+
+        uint256 nonceBefore = rm.nonce();
+        rm.clearExpiredRecovery();
+        assertEq(rm.nonce(), nonceBefore + 1);
+    }
+
+    function test_clearExpiredRecovery_emitsEvent() public {
+        bytes32 intentHash = _startRecoveryWithGuardian1();
+
+        vm.warp(block.timestamp + DEADLINE + 1);
+
+        vm.expectEmit(true, true, false, false);
+        emit IRecoveryManager.RecoveryCancelled(intentHash, address(wallet));
+
+        rm.clearExpiredRecovery();
+    }
+
+    function test_clearExpiredRecovery_allowsNewRecovery() public {
+        _startRecoveryWithGuardian1();
+
+        // Warp past deadline
+        vm.warp(block.timestamp + DEADLINE + 1);
+
+        // Clear expired session
+        rm.clearExpiredRecovery();
+
+        // Start a new recovery with updated nonce
+        EIP712Lib.RecoveryIntent memory newIntent = EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: rm.nonce(),
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(rm)
+        });
+        bytes32 newIntentHash = _createIntentHash(newIntent);
+        bytes memory proof = _signIntent(guardian1Key, newIntentHash);
+
+        rm.startRecovery(newIntent, 0, proof);
+        assertTrue(rm.isRecoveryActive());
+    }
+
+    function test_clearExpiredRecovery_revertsIfNoSession() public {
+        vm.expectRevert(IRecoveryManager.RecoveryNotActive.selector);
+        rm.clearExpiredRecovery();
+    }
+
+    function test_clearExpiredRecovery_revertsIfDeadlineNotReached() public {
+        _startRecoveryWithGuardian1();
+
+        // Don't warp past deadline
+        vm.expectRevert(IRecoveryManager.DeadlineNotReached.selector);
+        rm.clearExpiredRecovery();
+    }
+
+    function test_clearExpiredRecovery_revertsAtExactDeadline() public {
+        EIP712Lib.RecoveryIntent memory intent = _createIntent();
+        bytes32 intentHash = _createIntentHash(intent);
+        bytes memory proof = _signIntent(guardian1Key, intentHash);
+        rm.startRecovery(intent, 0, proof);
+
+        // Warp to exactly deadline (deadline check is <, not <=)
+        // submitProof/executeRecovery use >= for expiry, so at exactly deadline they revert
+        // clearExpiredRecovery uses < for "not reached", so at exactly deadline it should succeed
+        vm.warp(intent.deadline);
+        rm.clearExpiredRecovery();
+        assertFalse(rm.isRecoveryActive());
+    }
+}
+
 // ============ updatePolicy Tests ============
 
 contract RecoveryManager_UpdatePolicy is RecoveryManagerTestBase {

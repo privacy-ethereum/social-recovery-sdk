@@ -93,7 +93,7 @@ bb verify -p ./target/proof -k ./target/vk
 
 **Public Inputs:**
 - `pubkey_modulus_limbs` - RSA public key (identifies signing key)
-- `intent_hash` - Binds proof to specific RecoveryIntent (must be non-zero)
+- `intent_hash` - Binds proof to specific RecoveryIntent (must be non-zero). This is a Noir `Field` element (BN254 scalar field, ~254 bits). When using a real EIP-712 hash (256-bit keccak256), it **must be reduced modulo the BN254 scalar field modulus** (`p = 21888242871839275222246405745257275088548364400416034343698204186575808495617`) before being passed to the circuit. The same reduction is applied by `ZkJwtVerifier.sol` on-chain.
 
 **Output:**
 - `commitment` - `Poseidon2(email_hash, salt)` identifying the guardian

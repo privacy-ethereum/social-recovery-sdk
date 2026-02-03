@@ -62,8 +62,11 @@ export class RecoveryClient {
       policy.challengePeriod,
     );
 
-    // Wait for the transaction receipt to get the deployed address
+    // Wait for the transaction receipt and verify success
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status === 'reverted') {
+      throw new Error('RecoveryManager deployment transaction reverted');
+    }
 
     // Get the deployed RecoveryManager address from the factory
     const rmAddress = await this.factory.getRecoveryManager(policy.wallet);
@@ -103,6 +106,11 @@ export class RecoveryClient {
   async cancelRecovery(): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
     return rm.cancelRecovery();
+  }
+
+  async clearExpiredRecovery(): Promise<Hex> {
+    const rm = this.getRecoveryManagerOrThrow();
+    return rm.clearExpiredRecovery();
   }
 
   // --- Queries ---

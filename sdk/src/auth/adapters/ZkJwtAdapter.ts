@@ -11,7 +11,7 @@ import {
 } from '../utils/zkjwt/poseidon';
 import { extractJwtInputs } from '../utils/zkjwt/jwt';
 import { decodeJwtHeader, decodeJwtPayload, fetchGoogleJwk } from '../utils/zkjwt/google-jwks';
-import { generateZkJwtProof, type ZkJwtCircuitInputs } from '../utils/zkjwt/circuit';
+import { generateZkJwtProof, BN254_SCALAR_FIELD_MODULUS, type ZkJwtCircuitInputs } from '../utils/zkjwt/circuit';
 
 export interface ZkJwtAdapterConfig {
   jwt: string;
@@ -92,9 +92,10 @@ export class ZkJwtAdapter implements IAuthAdapter {
         };
       }
 
-      // Compute intent hash
+      // Compute intent hash and reduce to BN254 scalar field
+      // (keccak256 is 256-bit but Noir Field is ~254-bit; must match ZkJwtVerifier.sol)
       const intentHash = hashRecoveryIntent(intent);
-      const intentHashBigInt = BigInt(intentHash);
+      const intentHashBigInt = BigInt(intentHash) % BN254_SCALAR_FIELD_MODULUS;
 
       // Build circuit inputs
       const circuitInputs: ZkJwtCircuitInputs = {

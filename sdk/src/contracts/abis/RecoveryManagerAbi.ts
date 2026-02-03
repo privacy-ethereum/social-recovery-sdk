@@ -13,6 +13,13 @@ export const RecoveryManagerAbi = [
   },
   {
     type: 'function',
+    name: 'clearExpiredRecovery',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     name: 'challengePeriod',
     inputs: [],
     outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
@@ -278,6 +285,7 @@ export const RecoveryManagerAbi = [
   },
   { type: 'error', name: 'AlreadyInitialized', inputs: [] },
   { type: 'error', name: 'ChallengePeriodNotElapsed', inputs: [] },
+  { type: 'error', name: 'DeadlineNotReached', inputs: [] },
   { type: 'error', name: 'GuardianAlreadyApproved', inputs: [] },
   { type: 'error', name: 'GuardianNotFound', inputs: [] },
   { type: 'error', name: 'IntentExpired', inputs: [] },

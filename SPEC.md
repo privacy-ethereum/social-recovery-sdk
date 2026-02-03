@@ -150,7 +150,7 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 - **Algorithm**: Uses `noir-jwt` library with RS256 (RSA 2048-bit SHA-256)
 - **email_hash**: `Poseidon2([packed_field_0..4, email_len])` — email bytes packed into 5 Fields (31 bytes each)
 - **Commitment**: `Poseidon2([email_hash, salt])`
-- **Public inputs**: RSA public key modulus (18 limbs, identifies Google signing key), intent_hash (binds proof to specific recovery session)
+- **Public inputs**: RSA public key modulus (18 limbs, identifies Google signing key), intent_hash (EIP-712 hash reduced mod BN254 scalar field, binds proof to specific recovery session)
 - **Proof output**: commitment (Field)
 
 **Claims Verified:**
@@ -192,6 +192,12 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
      │ executeRecovery()
      ▼
 [No Session] (nonce++, new owner set)
+
+Note: If a session reaches its deadline without execution, anyone can call
+clearExpiredRecovery() to clear the stale session and allow a new recovery
+attempt. This prevents permanent lockout when the owner has lost their keys.
+(At exactly the deadline timestamp, the session is already expired — proofs
+cannot be submitted and execution is blocked — so clearing is permitted.)
 ```
 
 ### 5.3 Key Rules
@@ -201,6 +207,7 @@ A composable, standalone SDK for adding social recovery to smart wallets. Wallet
 - **Only guardians can initiate** recovery (prevents griefing)
 - **Anyone can execute** after challenge period (typically last guardian or relayer)
 - **Owner can cancel** any time while a session is active
+- **Anyone can clear expired sessions** — at or after the deadline, `clearExpiredRecovery()` removes the stale session, preventing deadlocks when the owner has lost keys
 - **Nonce prevents replay** — proofs bound to specific session
 
 ### 5.4 Policy Updates
@@ -232,7 +239,7 @@ This binds proofs to:
 - Specific chain and contract (prevents cross-chain/cross-contract replay)
 - Time limit (deadline)
 
-For zkJWT, the EIP-712 hash of RecoveryIntent is passed as `intent_hash` public input to the circuit.
+For zkJWT, the EIP-712 hash of RecoveryIntent is reduced modulo the BN254 scalar field modulus (`p = 21888242871839275222246405745257275088548364400416034343698204186575808495617`) and passed as `intent_hash` public input to the circuit. This reduction is necessary because keccak256 produces 256-bit values but Noir `Field` elements must be less than `p` (~254 bits). The same reduction is applied consistently in the SDK, circuit, and on-chain verifier.
 
 ---
 

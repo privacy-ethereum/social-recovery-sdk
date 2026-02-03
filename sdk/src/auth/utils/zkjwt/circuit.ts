@@ -13,6 +13,11 @@ async function loadCircuitArtifact(): Promise<any> {
   return circuitArtifact;
 }
 
+/// BN254 scalar field modulus — intent hashes must be reduced mod this value
+/// to fit in a Noir Field element (same constant used in ZkJwtVerifier.sol)
+export const BN254_SCALAR_FIELD_MODULUS =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
 export interface ZkJwtCircuitInputs {
   data: number[];
   dataLength: number;
@@ -53,15 +58,14 @@ export async function generateZkJwtProof(inputs: ZkJwtCircuitInputs): Promise<Zk
   }
 
   // Format inputs for noir_js
+  // BoundedVec inputs must be { storage: [...], len: "N" } to match the compiled ABI
   const formattedInputs = {
-    data: paddedData.map(String),
-    data_length: String(inputs.dataLength),
+    data: { storage: paddedData.map(String), len: String(inputs.dataLength) },
     base64_decode_offset: String(inputs.base64_decode_offset),
     signature_limbs: inputs.signature_limbs.map(String),
     pubkey_modulus_limbs: inputs.pubkey_modulus_limbs.map(String),
     redc_params_limbs: inputs.redc_params_limbs.map(String),
-    email: paddedEmail.map(String),
-    email_length: String(inputs.emailLength),
+    email: { storage: paddedEmail.map(String), len: String(inputs.emailLength) },
     salt: String(inputs.salt),
     intent_hash: String(inputs.intent_hash),
   };

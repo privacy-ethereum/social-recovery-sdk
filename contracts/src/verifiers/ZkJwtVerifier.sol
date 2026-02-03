@@ -13,11 +13,16 @@ interface IHonkVerifier {
 /// @notice Wraps the generated HonkVerifier to implement the IVerifier interface for zkJWT proofs
 /// @dev Public inputs layout (20 elements):
 ///      [0..17]  RSA pubkey modulus limbs (18 limbs, identifies the signing key)
-///      [18]     intentHash (binds proof to specific recovery session)
+///      [18]     intentHash reduced to BN254 scalar field (binds proof to specific recovery session)
 ///      [19]     commitment (guardian identifier = Poseidon2(email_hash, salt))
 contract ZkJwtVerifier is IVerifier {
     uint256 public constant NUM_PUBLIC_INPUTS = 20;
     uint256 public constant NUM_MODULUS_LIMBS = 18;
+
+    /// @notice BN254 scalar field modulus — intent hashes are reduced mod this value
+    ///         to fit in a Noir Field element
+    uint256 public constant BN254_SCALAR_FIELD_MODULUS =
+        21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
     IHonkVerifier public immutable honkVerifier;
 
@@ -43,8 +48,8 @@ contract ZkJwtVerifier is IVerifier {
             publicInputs[i] = pubkeyModulusLimbs[i];
         }
 
-        // [18] intentHash
-        publicInputs[18] = intentHash;
+        // [18] intentHash — reduce to BN254 scalar field so it matches the circuit's Field type
+        publicInputs[18] = bytes32(uint256(intentHash) % BN254_SCALAR_FIELD_MODULUS);
 
         // [19] commitment (= guardianIdentifier for zkJWT)
         publicInputs[19] = guardianIdentifier;
