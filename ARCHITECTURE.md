@@ -60,17 +60,27 @@ social-recovery-sdk/
 │   │   ├── constants.ts              # Chain addresses, EIP-712 domain config
 │   │   ├── auth/
 │   │   │   ├── AuthManager.ts        # Manages adapters, generates proofs
-│   │   │   └── adapters/
-│   │   │       ├── IAuthAdapter.ts   # Adapter interface
-│   │   │       ├── EoaAdapter.ts     # EOA: EIP-712 signing
-│   │   │       ├── PasskeyAdapter.ts # Passkey: WebAuthn assertion
-│   │   │       └── ZkJwtAdapter.ts   # zkJWT: OAuth + Noir proof generation
+│   │   │   ├── adapters/
+│   │   │   │   ├── IAuthAdapter.ts   # Adapter interface
+│   │   │   │   ├── EoaAdapter.ts     # EOA: EIP-712 signing
+│   │   │   │   ├── PasskeyAdapter.ts # Passkey: WebAuthn assertion
+│   │   │   │   └── ZkJwtAdapter.ts   # zkJWT: OAuth + Noir proof generation
+│   │   │   └── utils/
+│   │   │       ├── eip712.ts         # EIP-712 typed data hashing
+│   │   │       ├── webauthn.ts       # WebAuthn/COSE/DER parsing
+│   │   │       └── zkjwt/            # zkJWT circuit utilities
+│   │   │           ├── poseidon.ts       # Poseidon2 hashing via bb.js
+│   │   │           ├── rsa.ts            # RSA modulus extraction, limb splitting
+│   │   │           ├── jwt.ts            # JWT parsing, circuit input extraction
+│   │   │           ├── google-jwks.ts    # Google JWKS fetch, JWT decode
+│   │   │           └── circuit.ts        # Noir circuit execution, UltraHonk proving
 │   │   ├── recovery/
 │   │   │   ├── RecoveryClient.ts     # Main client: start, submit, execute recovery
 │   │   │   └── PolicyBuilder.ts      # Fluent API for building guardian policies
 │   │   └── contracts/
-│   │       ├── RecoveryManagerContract.ts  # Typed contract interactions
-│   │       └── FactoryContract.ts          # Factory contract interactions
+│   │       ├── abis/                      # Contract ABI constants
+│   │       ├── RecoveryManagerContract.ts # Typed contract interactions
+│   │       └── FactoryContract.ts         # Factory contract interactions
 │   └── test/
 │
 ├── SPEC.md                       # Functional requirements, protocol design

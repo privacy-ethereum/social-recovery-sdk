@@ -51,3 +51,21 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 **Dependencies:**
 - Added `noir-jwt` v0.5.1 for RS256 JWT verification
 - Added `poseidon` v0.2.0 for Poseidon2 hashing
+
+---
+
+## Phase 3: TypeScript SDK ✅
+
+**SDK:**
+- `EoaAdapter.ts` - EOA guardian: EIP-712 ECDSA signing, proof ABI-encoding
+- `ZkJwtAdapter.ts` - zkJWT guardian: Noir proof generation, Poseidon2 commitment
+- `AuthManager.ts` - Adapter registry, routes proof generation by guardian type
+- `RecoveryManagerContract.ts` / `FactoryContract.ts` - Typed viem contract wrappers
+- `RecoveryClient.ts` - Main orchestration: deploy, recover, execute, cancel
+- `PolicyBuilder.ts` - Fluent API for guardian policies
+- zkJWT utilities adapted from circuit scripts (`poseidon`, `jwt`, `rsa`, `google-jwks`, `circuit`)
+- Unit tests: 91 new tests (131 total with Phase 1)
+
+**Dependencies:**
+- Added `@aztec/bb.js` for Poseidon2 hashing and UltraHonk proof generation
+- Added `@noir-lang/noir_js` for Noir circuit execution
