@@ -1,10 +1,8 @@
 # Social Recovery SDK — Q1 2026 Roadmap
 
-**Target Completion:** February 27
-
 ---
 
-## Phase 1: Foundation & Passkey (January 5–16)
+## Phase 1: Foundation & Passkey
 
 - Project structure setup (Foundry, TypeScript, Noir)
 - Core interfaces (`IRecoveryManager`, `IVerifier`, `IWallet`)
@@ -13,14 +11,14 @@
 - `PasskeyAdapter` in SDK
 - Unit tests for passkey functionality
 
-## Phase 2: Core Contracts (January 19–30)
+## Phase 2: Core Contracts
 
 - `RecoveryManager` (policy, sessions, proof verification, execution)
 - `RecoveryManagerFactory` (EIP-1167 proxies)
 - `ZkJwtVerifier` + Noir circuit
 - Contract unit tests
 
-## Phase 3: TypeScript SDK (February 2–13)
+## Phase 3: TypeScript SDK
 
 - `RecoveryClient` (main orchestration)
 - `AuthManager` + remaining adapters (EOA, zkJWT)
@@ -28,13 +26,13 @@
 - Contract bindings
 - SDK unit tests
 
-## Phase 4: Full Library Testing (February 16–20)
+## Phase 4: Full Library Testing
 
 - End-to-end flow tests
 - SDK ↔ Contract integration tests
 - Testnet deployment
 
-## Phase 5: Integration testing // Ambire Wallet (February 23-27)
+## Phase 5: Integration testing // Ambire Wallet
 
 - Integration with Ambire wallet
 - Full recovery flow testing
