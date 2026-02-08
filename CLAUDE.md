@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## IMPORTANT
+
+Always use Opus 4.6 as a default model for background agents.
+
 ## Project Overview
 
 Social Recovery SDK - a composable SDK for adding social recovery to smart wallets. Guardians can collectively restore wallet access using three authentication methods: EOA signatures, Passkeys (WebAuthn/P-256), and zkJWT (zero-knowledge proofs over Google JWTs).
