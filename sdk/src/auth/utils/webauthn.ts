@@ -183,6 +183,13 @@ export interface P256Signature {
   s: bigint;
 }
 
+// P-256 curve order (n) and half-order for low-S normalization.
+// Contracts reject high-S signatures to prevent malleability, so we canonicalize here.
+const P256_CURVE_ORDER =
+  0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+const P256_N_DIV_2 =
+  0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8n;
+
 /**
  * Parses a DER-encoded P-256 signature to r, s components
  *
@@ -231,10 +238,12 @@ export function parseP256Signature(derSignature: Uint8Array): P256Signature {
     sStart++;
   }
   const sBytes = derSignature.slice(sStart, offset + sLength);
+  const sRaw = bytesToBigInt(sBytes);
+  const sCanonical = sRaw > P256_N_DIV_2 ? P256_CURVE_ORDER - sRaw : sRaw;
 
   return {
     r: bytesToBigInt(rBytes),
-    s: bytesToBigInt(sBytes),
+    s: sCanonical,
   };
 }
 

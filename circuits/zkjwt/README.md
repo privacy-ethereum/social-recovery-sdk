@@ -12,7 +12,7 @@ cd scripts && npm install && npm run generate
 cd .. && nargo execute
 
 # Generate proof and verification key
-bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target
+bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target -t evm
 
 # Verify proof
 bb verify -p ./target/proof -k ./target/vk
@@ -27,6 +27,7 @@ zkjwt/
 ├── src/main.nr          # Main circuit
 ├── Nargo.toml           # Circuit dependencies (noir-jwt, poseidon)
 ├── Prover.toml          # Circuit inputs (generated)
+├── target/              # Generated artifacts (proof, public_inputs, vk, vk_hash, etc.)
 └── scripts/             # TypeScript input generators
     ├── src/
     │   ├── generate-prover.ts        # CLI entry point
@@ -81,7 +82,7 @@ npm run generate:google -- --jwt="<paste id_token here>" --salt=12345 --intent-h
 ```bash
 cd ..
 nargo execute
-bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target
+bb prove -b ./target/zkjwt.json -w ./target/zkjwt.gz --write_vk -o target -t evm
 bb verify -p ./target/proof -k ./target/vk
 ```
 

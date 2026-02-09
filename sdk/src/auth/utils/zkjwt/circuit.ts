@@ -60,23 +60,41 @@ export async function generateZkJwtProof(inputs: ZkJwtCircuitInputs): Promise<Zk
   // Format inputs for noir_js
   // BoundedVec inputs must be { storage: [...], len: "N" } to match the compiled ABI
   const formattedInputs = {
-    data: { storage: paddedData.map(String), len: String(inputs.dataLength) },
-    base64_decode_offset: String(inputs.base64_decode_offset),
+    data: { storage: paddedData, len: inputs.dataLength },
+    base64_decode_offset: inputs.base64_decode_offset,
     signature_limbs: inputs.signature_limbs.map(String),
     pubkey_modulus_limbs: inputs.pubkey_modulus_limbs.map(String),
     redc_params_limbs: inputs.redc_params_limbs.map(String),
-    email: { storage: paddedEmail.map(String), len: String(inputs.emailLength) },
+    email: { storage: paddedEmail, len: inputs.emailLength },
     salt: String(inputs.salt),
     intent_hash: String(inputs.intent_hash),
   };
 
   // Execute circuit to generate witness
   const noir = new Noir(artifact);
-  const { witness } = await noir.execute(formattedInputs as any);
+  let witness: Uint8Array;
+  try {
+    const result = await noir.execute(formattedInputs as any);
+    witness = result.witness;
+  } catch (error) {
+    throw new Error(
+      `noir.execute failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   // Generate proof using UltraHonk backend
   const backend = new UltraHonkBackend(artifact.bytecode);
-  const { proof, publicInputs } = await backend.generateProof(witness);
+  let proof: Uint8Array;
+  let publicInputs: string[];
+  try {
+    const result = await backend.generateProof(witness);
+    proof = result.proof;
+    publicInputs = result.publicInputs;
+  } catch (error) {
+    throw new Error(
+      `backend.generateProof failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   return { rawProof: proof, publicInputs };
 }

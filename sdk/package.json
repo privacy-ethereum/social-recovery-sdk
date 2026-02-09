@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "vitest",
+    "test": "vitest --exclude test/e2e.test.ts",
+    "test:e2e": "bash ./scripts/test-e2e.sh",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["ethereum", "social-recovery", "wallet"],

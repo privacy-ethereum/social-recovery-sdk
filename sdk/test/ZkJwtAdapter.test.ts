@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { ZkJwtAdapter, computeZkJwtIdentifier } from '../src/auth/adapters/ZkJwtAdapter';
 import { initBarretenberg } from '../src/auth/utils/zkjwt/poseidon';
+import { fetchGoogleJwk } from '../src/auth/utils/zkjwt/google-jwks';
 import type { RecoveryIntent } from '../src/types';
 
 // Mock the circuit proof generation (actual proving is too slow for unit tests)
@@ -52,6 +53,22 @@ function createTestJwt(): string {
   return `${header}.${payload}.${signature}`;
 }
 
+function createTestJwtWithoutKid(): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: 'https://accounts.google.com',
+      email: TEST_EMAIL,
+      email_verified: true,
+      sub: '12345',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    }),
+  ).toString('base64url');
+  const signature = Buffer.from(new Uint8Array(256).fill(0x24)).toString('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
 const testIntent: RecoveryIntent = {
   wallet: '0x1111111111111111111111111111111111111111',
   newOwner: '0x2222222222222222222222222222222222222222',
@@ -64,6 +81,10 @@ const testIntent: RecoveryIntent = {
 describe('ZkJwtAdapter', () => {
   beforeAll(async () => {
     await initBarretenberg();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
   describe('computeZkJwtIdentifier', () => {
@@ -137,6 +158,24 @@ describe('ZkJwtAdapter', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('does not match');
+    });
+
+    it('should use injected JWK without fetching Google keys', async () => {
+      const jwt = createTestJwtWithoutKid();
+      const adapter = new ZkJwtAdapter({
+        jwt,
+        salt: TEST_SALT,
+        publicKeyJwk: {
+          kty: 'RSA',
+          n: 'sXchDaQebHnPiGvhGPEUBL98SXRq6V6D_eD0B7BDCj2B0C4N0I-Z3GFne-56VoITfXRhGn6b1IqA0SICffRmC0f3T6UdSfIab38G0VQzJ_hIV_zKPwfGs7MWXB2xJ2g-aIAP2GOP0_CLhBE0xPWMB0lHHbyOD0bPOnfOCvSdHmLYGxbMOB0GSMV0oeP2RBNheFNbJE0S3GWmJBL2JtVfC79eMVIaUt18n5pOGJCqXRTOY-OiqQZmiFb1oO-GP8kcaHYJaRBmeF43KS7bmk9eFqBaE1EHOsQPhsRBMBEasLyQJJfJmo5ALFiNTgWAFCesVj8D80lQ-5mVkiTb0q9w',
+          e: 'AQAB',
+        },
+      });
+      const guardianIdentifier = adapter.computeIdentifier({ email: TEST_EMAIL, salt: TEST_SALT });
+
+      const result = await adapter.generateProof(testIntent, guardianIdentifier);
+      expect(result.success).toBe(true);
+      expect(fetchGoogleJwk).not.toHaveBeenCalled();
     });
   });
 });

@@ -8,6 +8,21 @@ Solidity smart contracts for social recovery. Manages guardian policies, recover
 forge install && forge build && forge test
 ```
 
+## Deployment (Sepolia / EVM Chains)
+
+`HonkVerifier` exceeds EIP-170 with default compiler settings. Use the size-optimized deploy profile:
+
+```bash
+FOUNDRY_PROFILE=deploy forge build
+```
+
+Automated deployment script:
+
+```bash
+cd contracts
+CHAIN="sepolia" RPC_URL="$SEPOLIA_RPC_URL" PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" ETHERSCAN_API_KEY="$ETHERSCAN_API_KEY" ./scripts/deploy.sh
+```
+
 ## Directory Structure
 
 ```
@@ -22,10 +37,15 @@ contracts/
 │   ├── libraries/
 │   │   ├── GuardianLib.sol              # Guardian types and identifier computation
 │   │   └── EIP712Lib.sol                # EIP-712 typed data hashing for RecoveryIntent
+│   ├── mocks/
+│   │   ├── MockRecoveryWallet.sol       # Minimal wallet used by SDK e2e tests
+│   │   └── P256VerifierStub.sol         # Local Anvil stub for EIP-7212 verifier predeploy
 │   └── verifiers/
 │       ├── PasskeyVerifier.sol          # WebAuthn/P-256 signature verification
 │       ├── ZkJwtVerifier.sol            # Wraps HonkVerifier, implements IVerifier
 │       └── HonkVerifier.sol             # Auto-generated Noir proof verifier
+├── scripts/
+│   └── deploy.sh                        # Deploy script for verifier stack + factory
 └── test/
     ├── RecoveryManager.t.sol            # RecoveryManager tests (~63 tests)
     ├── RecoveryManagerFactory.t.sol      # Factory tests (~10 tests)

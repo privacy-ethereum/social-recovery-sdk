@@ -20,6 +20,9 @@ cd contracts && forge install && forge build && forge test
 # SDK
 cd sdk && npm install && npm run build && npm test
 
+# SDK ↔ Contracts e2e (spins up Anvil automatically)
+cd sdk && npm run test:e2e
+
 # Circuits
 cd circuits/zkjwt && nargo build && nargo test
 ```

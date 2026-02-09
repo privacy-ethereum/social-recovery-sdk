@@ -69,3 +69,21 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 **Dependencies:**
 - Added `@aztec/bb.js` for Poseidon2 hashing and UltraHonk proof generation
 - Added `@noir-lang/noir_js` for Noir circuit execution
+
+---
+
+## Phase 4: End-to-End Testing & Deployment Readiness ✅
+
+**E2E:**
+- `sdk/test/e2e.test.ts` - End-to-end recovery tests for EOA, Passkey, and zkJWT guardians against deployed local contracts
+- `sdk/scripts/test-e2e.sh` - One-command runner (build contracts, start Anvil, run SDK e2e suite)
+- Added deterministic passkey proof path in e2e with WebAuthn-compatible payload format
+- Added local P-256 verifier predeploy stub for Anvil e2e (`contracts/src/mocks/P256VerifierStub.sol`)
+
+**Deployment readiness:**
+- Added Foundry deploy profile in `contracts/foundry.toml` (`optimizer_runs=1`) to fit `HonkVerifier` under EIP-170 size limit
+- Added `contracts/scripts/deploy.sh` to deploy + verify verifier stack, RecoveryManager implementation, and factory
+
+**SDK/zkJWT hardening:**
+- `parseP256Signature()` now canonicalizes low-`s` signatures for passkey compatibility with on-chain verifier checks
+- zkJWT e2e proof generation uses circuit toolchain with EVM target (`bb prove -t evm`) and on-chain-compatible proof encoding

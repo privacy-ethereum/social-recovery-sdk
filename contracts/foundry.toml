@@ -7,4 +7,9 @@ remappings = [
     "forge-std/=lib/forge-std/src/"
 ]
 
+[profile.deploy]
+# Size-optimized profile for production deployments where EIP-170 matters.
+optimizer = true
+optimizer_runs = 1
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

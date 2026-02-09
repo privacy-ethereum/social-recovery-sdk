@@ -16,6 +16,11 @@ import { generateZkJwtProof, BN254_SCALAR_FIELD_MODULUS, type ZkJwtCircuitInputs
 export interface ZkJwtAdapterConfig {
   jwt: string;
   salt: bigint;
+  /**
+   * Optional RSA public key JWK used to verify JWT signatures inside the circuit.
+   * If omitted, the adapter fetches Google's JWK by JWT header `kid`.
+   */
+  publicKeyJwk?: JsonWebKey;
 }
 
 /**
@@ -57,7 +62,6 @@ export class ZkJwtAdapter implements IAuthAdapter {
       await initBarretenberg();
 
       // Decode JWT to extract email and kid
-      const { kid } = decodeJwtHeader(this.config.jwt);
       const payload = decodeJwtPayload(this.config.jwt);
       const email = payload.email as string;
       if (!email) {
@@ -76,8 +80,15 @@ export class ZkJwtAdapter implements IAuthAdapter {
         };
       }
 
-      // Fetch the public key for this JWT
-      const jwk = await fetchGoogleJwk(kid);
+      // Resolve the public key for this JWT.
+      // For e2e/offline tests, a preloaded JWK can be injected via config.
+      let jwk: JsonWebKey;
+      if (this.config.publicKeyJwk) {
+        jwk = this.config.publicKeyJwk;
+      } else {
+        const { kid } = decodeJwtHeader(this.config.jwt);
+        jwk = await fetchGoogleJwk(kid);
+      }
 
       // Extract JWT circuit inputs
       const jwtInputs = extractJwtInputs(this.config.jwt, jwk);

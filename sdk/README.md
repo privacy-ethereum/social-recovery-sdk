@@ -6,6 +6,9 @@ TypeScript SDK for social recovery. Orchestrates guardian proofs, contract inter
 
 ```bash
 npm install && npm run build && npm test
+
+# Full SDK ↔ Contracts e2e on local Anvil
+npm run test:e2e
 ```
 
 ## Directory Structure
@@ -34,7 +37,11 @@ sdk/
 │   ├── types.ts                   # Core type definitions
 │   ├── constants.ts               # EIP-712 domain, defaults
 │   └── index.ts                   # Public exports
+├── scripts/
+│   └── test-e2e.sh                # Local e2e runner (Anvil + contracts + vitest)
 └── test/
+    ├── e2e.test.ts                # Full SDK -> contracts e2e (EOA, Passkey, zkJWT)
+    └── *.test.ts                  # Unit/integration tests
 ```
 
 ## Usage
