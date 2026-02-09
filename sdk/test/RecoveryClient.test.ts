@@ -6,6 +6,7 @@ import type { Address, Hex, PublicClient, WalletClient } from 'viem';
 const FACTORY_ADDRESS = '0xfactoryfactoryfactoryfactoryfactory00000' as Address;
 const RM_ADDRESS = '0x1234567890123456789012345678901234567890' as Address;
 const WALLET_ADDRESS = '0x1111111111111111111111111111111111111111' as Address;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 
 function createMockPublicClient() {
   return {
@@ -82,6 +83,7 @@ describe('RecoveryClient', () => {
       await expect(client.getNonce()).rejects.toThrow('RecoveryManager address not set');
       await expect(client.executeRecovery()).rejects.toThrow('RecoveryManager address not set');
       await expect(client.cancelRecovery()).rejects.toThrow('RecoveryManager address not set');
+      await expect(client.clearExpiredRecovery()).rejects.toThrow('RecoveryManager address not set');
     });
   });
 
@@ -197,6 +199,57 @@ describe('RecoveryClient', () => {
       const nonce = await client.getNonce();
       expect(nonce).toBe(5n);
     });
+
+    it('should return policy with guardians', async () => {
+      const publicClient = createMockPublicClient();
+      (publicClient.readContract as any).mockImplementation(
+        async ({ functionName, args }: { functionName: string; args?: unknown[] }) => {
+          switch (functionName) {
+            case 'wallet':
+              return WALLET_ADDRESS;
+            case 'threshold':
+              return 2n;
+            case 'challengePeriod':
+              return 86400n;
+            case 'guardianCount':
+              return 2n;
+            case 'getGuardian':
+              if ((args?.[0] as bigint) === 0n) {
+                return {
+                  guardianType: GuardianType.EOA,
+                  identifier: ('0x' + '11'.repeat(32)) as Hex,
+                };
+              }
+              return {
+                guardianType: GuardianType.Passkey,
+                identifier: ('0x' + '22'.repeat(32)) as Hex,
+              };
+            default:
+              throw new Error(`Unexpected function call: ${functionName}`);
+          }
+        },
+      );
+
+      const client = new RecoveryClient({
+        publicClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const policy = await client.getPolicy();
+      expect(policy.wallet).toBe(WALLET_ADDRESS);
+      expect(policy.threshold).toBe(2n);
+      expect(policy.challengePeriod).toBe(86400n);
+      expect(policy.guardians).toEqual([
+        {
+          guardianType: GuardianType.EOA,
+          identifier: ('0x' + '11'.repeat(32)) as Hex,
+        },
+        {
+          guardianType: GuardianType.Passkey,
+          identifier: ('0x' + '22'.repeat(32)) as Hex,
+        },
+      ]);
+    });
   });
 
   describe('submitProof', () => {
@@ -257,6 +310,22 @@ describe('RecoveryClient', () => {
     });
   });
 
+  describe('clearExpiredRecovery', () => {
+    it('should forward to recovery manager', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const txHash = await client.clearExpiredRecovery();
+      expect(txHash).toBe('0xtxhash');
+    });
+  });
+
   describe('isReadyToExecute', () => {
     it('should return false when recovery not active', async () => {
       const publicClient = createMockPublicClient();
@@ -281,6 +350,31 @@ describe('RecoveryClient', () => {
 
       const ready = await client.isReadyToExecute();
       expect(ready).toBe(false);
+    });
+
+    it('should return true when threshold met, challenge elapsed, and deadline valid', async () => {
+      const publicClient = createMockPublicClient();
+      const now = BigInt(Math.floor(Date.now() / 1000));
+
+      (publicClient.readContract as any)
+        .mockResolvedValueOnce(true) // isRecoveryActive
+        .mockResolvedValueOnce([
+          ('0x' + 'aa'.repeat(32)) as Hex,
+          '0x2222222222222222222222222222222222222222' as Address,
+          now + 3600n, // deadline
+          now - 1000n, // thresholdMetAt
+          2n, // approvalCount
+        ])
+        .mockResolvedValueOnce(2n) // threshold
+        .mockResolvedValueOnce(600n); // challengePeriod
+
+      const client = new RecoveryClient({
+        publicClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const ready = await client.isReadyToExecute();
+      expect(ready).toBe(true);
     });
   });
 
@@ -315,6 +409,53 @@ describe('RecoveryClient', () => {
           guardians: [],
         }),
       ).rejects.toThrow('WalletClient required');
+    });
+
+    it('should deploy and set recovery manager on success', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.readContract as any).mockResolvedValue(RM_ADDRESS);
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        factoryAddress: FACTORY_ADDRESS,
+      });
+
+      const deployedAddress = await client.deployRecoveryManager({
+        wallet: WALLET_ADDRESS,
+        threshold: 1n,
+        challengePeriod: 86400n,
+        guardians: [],
+      });
+
+      expect(deployedAddress).toBe(RM_ADDRESS);
+      expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xtxhash' });
+
+      // If setRecoveryManager worked, this call should no longer throw for missing RM
+      (publicClient.readContract as any).mockResolvedValueOnce(true);
+      await expect(client.isRecoveryActive()).resolves.toBe(true);
+    });
+
+    it('should throw when factory returns zero address', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.readContract as any).mockResolvedValue(ZERO_ADDRESS);
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        factoryAddress: FACTORY_ADDRESS,
+      });
+
+      await expect(
+        client.deployRecoveryManager({
+          wallet: WALLET_ADDRESS,
+          threshold: 1n,
+          challengePeriod: 86400n,
+          guardians: [],
+        }),
+      ).rejects.toThrow('Factory returned zero RecoveryManager address');
     });
   });
 });

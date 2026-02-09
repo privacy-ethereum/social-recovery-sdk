@@ -31,6 +31,29 @@ contract MockWallet {
     }
 }
 
+contract MockWalletStrictAuth {
+    address public owner;
+    mapping(address => bool) private _authorized;
+
+    constructor(address _owner) {
+        owner = _owner;
+    }
+
+    function setOwner(address newOwner) external {
+        require(msg.sender == owner || _authorized[msg.sender], "not authorized");
+        owner = newOwner;
+    }
+
+    function isRecoveryAuthorized(address account) external view returns (bool) {
+        return _authorized[account];
+    }
+
+    function authorize(address account) external {
+        require(msg.sender == owner, "only owner");
+        _authorized[account] = true;
+    }
+}
+
 contract MockVerifier is IVerifier {
     bool public returnValue = true;
 
@@ -375,6 +398,26 @@ contract RecoveryManager_StartRecovery is RecoveryManagerTestBase {
 
         vm.expectRevert(IRecoveryManager.IntentExpired.selector);
         rm.startRecovery(intent, 0, proof);
+    }
+
+    function test_startRecovery_revertsWhenDeadlineAtChallengeBoundary() public {
+        EIP712Lib.RecoveryIntent memory intent = _createIntent();
+        intent.deadline = block.timestamp + CHALLENGE_PERIOD;
+        bytes32 intentHash = _createIntentHash(intent);
+        bytes memory proof = _signIntent(guardian1Key, intentHash);
+
+        vm.expectRevert(IRecoveryManager.InvalidIntent.selector);
+        rm.startRecovery(intent, 0, proof);
+    }
+
+    function test_startRecovery_acceptsDeadlineBeyondChallengeBoundary() public {
+        EIP712Lib.RecoveryIntent memory intent = _createIntent();
+        intent.deadline = block.timestamp + CHALLENGE_PERIOD + 1;
+        bytes32 intentHash = _createIntentHash(intent);
+        bytes memory proof = _signIntent(guardian1Key, intentHash);
+
+        rm.startRecovery(intent, 0, proof);
+        assertTrue(rm.isRecoveryActive());
     }
 
     function test_startRecovery_revertsOnInvalidGuardianIndex() public {
@@ -1137,6 +1180,114 @@ contract RecoveryManager_MixedGuardians is RecoveryManagerTestBase {
         assertTrue(mixedRm.hasApproved(guardian1Id));
         assertTrue(mixedRm.hasApproved(bytes32(uint256(0xBBCC))));
     }
+
+    function test_startRecovery_revertsWhenPasskeyVerifierReturnsFalse() public {
+        passkeyVerifier.setReturnValue(false);
+
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager mixedRm = RecoveryManager(_deployProxy(address(impl)));
+
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](2);
+        guardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.Passkey, bytes32(uint256(0xAA55)));
+        guardians[1] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian1Id);
+
+        mixedRm.initialize(address(wallet), guardians, 2, CHALLENGE_PERIOD, address(passkeyVerifier), address(zkJwtVerifier));
+
+        EIP712Lib.RecoveryIntent memory intent = EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: 0,
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(mixedRm)
+        });
+
+        vm.expectRevert(IRecoveryManager.InvalidProof.selector);
+        mixedRm.startRecovery(intent, 0, hex"deadbeef");
+    }
+
+    function test_submitProof_revertsWhenPasskeyVerifierReturnsFalse() public {
+        passkeyVerifier.setReturnValue(false);
+
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager mixedRm = RecoveryManager(_deployProxy(address(impl)));
+
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](2);
+        guardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian1Id);
+        guardians[1] = GuardianLib.Guardian(GuardianLib.GuardianType.Passkey, bytes32(uint256(0xAA55)));
+
+        mixedRm.initialize(address(wallet), guardians, 2, CHALLENGE_PERIOD, address(passkeyVerifier), address(zkJwtVerifier));
+
+        EIP712Lib.RecoveryIntent memory intent = EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: 0,
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(mixedRm)
+        });
+        bytes32 intentHash = EIP712Lib.hashTypedData(intent, address(mixedRm));
+        bytes memory eoaProof = _signIntent(guardian1Key, intentHash);
+
+        mixedRm.startRecovery(intent, 0, eoaProof);
+
+        vm.expectRevert(IRecoveryManager.InvalidProof.selector);
+        mixedRm.submitProof(1, hex"deadbeef");
+    }
+
+    function test_startRecovery_revertsWhenZkJwtVerifierReturnsFalse() public {
+        zkJwtVerifier.setReturnValue(false);
+
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager mixedRm = RecoveryManager(_deployProxy(address(impl)));
+
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](2);
+        guardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.ZkJWT, bytes32(uint256(0xBBCC)));
+        guardians[1] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian1Id);
+
+        mixedRm.initialize(address(wallet), guardians, 2, CHALLENGE_PERIOD, address(passkeyVerifier), address(zkJwtVerifier));
+
+        EIP712Lib.RecoveryIntent memory intent = EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: 0,
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(mixedRm)
+        });
+
+        vm.expectRevert(IRecoveryManager.InvalidProof.selector);
+        mixedRm.startRecovery(intent, 0, hex"deadbeef");
+    }
+
+    function test_submitProof_revertsWhenZkJwtVerifierReturnsFalse() public {
+        zkJwtVerifier.setReturnValue(false);
+
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager mixedRm = RecoveryManager(_deployProxy(address(impl)));
+
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](2);
+        guardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian1Id);
+        guardians[1] = GuardianLib.Guardian(GuardianLib.GuardianType.ZkJWT, bytes32(uint256(0xBBCC)));
+
+        mixedRm.initialize(address(wallet), guardians, 2, CHALLENGE_PERIOD, address(passkeyVerifier), address(zkJwtVerifier));
+
+        EIP712Lib.RecoveryIntent memory intent = EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: 0,
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(mixedRm)
+        });
+        bytes32 intentHash = EIP712Lib.hashTypedData(intent, address(mixedRm));
+        bytes memory eoaProof = _signIntent(guardian1Key, intentHash);
+
+        mixedRm.startRecovery(intent, 0, eoaProof);
+
+        vm.expectRevert(IRecoveryManager.InvalidProof.selector);
+        mixedRm.submitProof(1, hex"deadbeef");
+    }
 }
 
 // ============ Edge Case Tests ============
@@ -1215,6 +1366,114 @@ contract RecoveryManager_EdgeCases is RecoveryManagerTestBase {
         // block.timestamp < block.timestamp + 0 → block.timestamp < block.timestamp → false
         // So this should succeed
         rm0.executeRecovery();
+        assertEq(wallet.owner(), newOwner);
+    }
+}
+
+// ============ Wallet Authorization Integration Tests ============
+
+contract RecoveryManager_WalletAuthorization is Test {
+    RecoveryManager rm;
+    MockWalletStrictAuth wallet;
+    MockVerifier passkeyVerifier;
+    MockVerifier zkJwtVerifier;
+
+    address walletOwner = address(0x1111);
+    address newOwner = address(0x2222);
+
+    uint256 guardian1Key = 0xA11CE;
+    address guardian1Addr;
+    bytes32 guardian1Id;
+
+    uint256 guardian2Key = 0xB0B;
+    address guardian2Addr;
+    bytes32 guardian2Id;
+
+    uint256 constant CHALLENGE_PERIOD = 1 days;
+    uint256 constant DEADLINE = 7 days;
+
+    function setUp() public {
+        guardian1Addr = vm.addr(guardian1Key);
+        guardian1Id = GuardianLib.computeEoaIdentifier(guardian1Addr);
+        guardian2Addr = vm.addr(guardian2Key);
+        guardian2Id = GuardianLib.computeEoaIdentifier(guardian2Addr);
+
+        wallet = new MockWalletStrictAuth(walletOwner);
+        passkeyVerifier = new MockVerifier();
+        zkJwtVerifier = new MockVerifier();
+
+        RecoveryManager impl = new RecoveryManager();
+        rm = RecoveryManager(_deployProxy(address(impl)));
+
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](2);
+        guardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian1Id);
+        guardians[1] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian2Id);
+
+        rm.initialize(
+            address(wallet),
+            guardians,
+            2,
+            CHALLENGE_PERIOD,
+            address(passkeyVerifier),
+            address(zkJwtVerifier)
+        );
+    }
+
+    function _deployProxy(address impl) internal returns (address instance) {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(add(ptr, 0x14), shl(96, impl))
+            mstore(add(ptr, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
+            instance := create(0, ptr, 0x37)
+        }
+        require(instance != address(0), "proxy deployment failed");
+    }
+
+    function _createIntent() internal view returns (EIP712Lib.RecoveryIntent memory) {
+        return EIP712Lib.RecoveryIntent({
+            wallet: address(wallet),
+            newOwner: newOwner,
+            nonce: rm.nonce(),
+            deadline: block.timestamp + DEADLINE,
+            chainId: block.chainid,
+            recoveryManager: address(rm)
+        });
+    }
+
+    function _signIntent(uint256 privateKey, bytes32 intentHash) internal pure returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, intentHash);
+        return abi.encode(v, r, s);
+    }
+
+    function _meetThresholdAndWait() internal {
+        EIP712Lib.RecoveryIntent memory intent = _createIntent();
+        bytes32 intentHash = EIP712Lib.hashTypedData(intent, address(rm));
+
+        bytes memory proof1 = _signIntent(guardian1Key, intentHash);
+        rm.startRecovery(intent, 0, proof1);
+
+        bytes memory proof2 = _signIntent(guardian2Key, intentHash);
+        rm.submitProof(1, proof2);
+
+        vm.warp(block.timestamp + CHALLENGE_PERIOD + 1);
+    }
+
+    function test_executeRecovery_revertsWhenRecoveryManagerNotAuthorized() public {
+        _meetThresholdAndWait();
+
+        vm.expectRevert();
+        rm.executeRecovery();
+        assertEq(wallet.owner(), walletOwner);
+    }
+
+    function test_executeRecovery_succeedsWhenRecoveryManagerAuthorized() public {
+        _meetThresholdAndWait();
+
+        vm.prank(walletOwner);
+        wallet.authorize(address(rm));
+
+        rm.executeRecovery();
         assertEq(wallet.owner(), newOwner);
     }
 }

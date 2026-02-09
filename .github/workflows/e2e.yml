@@ -37,10 +37,28 @@ jobs:
           toolchain: stable
 
       - name: Ensure bb is available
+        shell: bash
         run: |
+          set -euo pipefail
+
           if ! command -v bb >/dev/null 2>&1; then
-            bbup
+            if command -v bbup >/dev/null 2>&1; then
+              bbup -nv current
+            else
+              NOIR_VERSION="$(nargo --version | sed -n 's/.*nargo version = //p')"
+              if [[ -z "${NOIR_VERSION}" ]]; then
+                echo "Could not determine nargo version for bb install"
+                exit 1
+              fi
+
+              INSTALL_BB_URL="https://raw.githubusercontent.com/noir-lang/noir/v${NOIR_VERSION}/scripts/install_bb.sh"
+              curl -fsSL "${INSTALL_BB_URL}" -o /tmp/install_bb.sh
+              bash /tmp/install_bb.sh
+            fi
           fi
+
+          echo "${HOME}/.bb" >> "${GITHUB_PATH}"
+          export PATH="${HOME}/.bb:${PATH}"
           bb --version
 
       - name: Install SDK dependencies

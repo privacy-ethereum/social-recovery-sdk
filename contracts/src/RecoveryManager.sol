@@ -131,6 +131,9 @@ contract RecoveryManager is IRecoveryManager {
         if (intent.chainId != block.chainid) revert InvalidIntent();
         if (intent.recoveryManager != address(this)) revert InvalidIntent();
         if (intent.deadline <= block.timestamp) revert IntentExpired();
+        // Ensure a recovery can still become executable if threshold is met promptly.
+        // executeRecovery requires both challengePeriod elapsed and deadline not passed.
+        if (intent.deadline <= block.timestamp + challengePeriod) revert InvalidIntent();
 
         // Compute intent hash
         bytes32 intentHash = EIP712Lib.hashTypedData(intent, address(this));

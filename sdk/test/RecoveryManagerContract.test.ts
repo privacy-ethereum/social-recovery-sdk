@@ -214,6 +214,45 @@ describe('RecoveryManagerContract', () => {
       expect(txHash).toBe('0xtxhash');
     });
 
+    it('should call updatePolicy with guardian payload', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+
+      const contract = new RecoveryManagerContract({
+        address: TEST_ADDRESS,
+        publicClient,
+        walletClient,
+      });
+
+      const txHash = await contract.updatePolicy(
+        [
+          {
+            guardianType: GuardianType.EOA,
+            identifier: ('0x' + '11'.repeat(32)) as Hex,
+          },
+        ],
+        1n,
+        3600n,
+      );
+
+      expect(txHash).toBe('0xtxhash');
+      expect(walletClient.writeContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: 'updatePolicy',
+          args: [
+            [
+              {
+                guardianType: GuardianType.EOA,
+                identifier: ('0x' + '11'.repeat(32)) as Hex,
+              },
+            ],
+            1n,
+            3600n,
+          ],
+        }),
+      );
+    });
+
     it('should throw when no walletClient for write ops', async () => {
       const publicClient = createMockPublicClient();
       const contract = new RecoveryManagerContract({
@@ -222,6 +261,18 @@ describe('RecoveryManagerContract', () => {
       });
 
       await expect(contract.executeRecovery()).rejects.toThrow('WalletClient required');
+      await expect(
+        contract.updatePolicy(
+          [
+            {
+              guardianType: GuardianType.EOA,
+              identifier: ('0x' + '11'.repeat(32)) as Hex,
+            },
+          ],
+          1n,
+          0n,
+        ),
+      ).rejects.toThrow('WalletClient required');
     });
   });
 });

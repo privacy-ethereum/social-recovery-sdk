@@ -4,6 +4,8 @@ pragma solidity ^0.8.21;
 import "forge-std/Test.sol";
 import {PasskeyVerifier} from "../src/verifiers/PasskeyVerifier.sol";
 import {GuardianLib} from "../src/libraries/GuardianLib.sol";
+import {P256} from "p256-verifier/P256.sol";
+import {P256VerifierStub} from "../src/mocks/P256VerifierStub.sol";
 
 contract PasskeyVerifierTest is Test {
     PasskeyVerifier verifier;
@@ -13,6 +15,7 @@ contract PasskeyVerifierTest is Test {
     uint256 constant TEST_PUB_KEY_Y = 0x1a2b3c4d5e6f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b;
 
     function setUp() public {
+        vm.etch(P256.VERIFIER, type(P256VerifierStub).runtimeCode);
         verifier = new PasskeyVerifier();
     }
 
@@ -133,44 +136,63 @@ contract PasskeyVerifierTest is Test {
 }
 
 /// @dev Test with real WebAuthn test vectors
-/// Note: In a production test suite, you would include actual test vectors from
-/// WebAuthn test suites or generate them using a test authenticator
 contract PasskeyVerifierIntegrationTest is Test {
     PasskeyVerifier verifier;
 
+    bytes32 constant INTENT_HASH =
+        0x11223344556677889900aabbccddeeff00112233445566778899aabbccddeeff;
+    uint256 constant PUB_KEY_X =
+        0xed80cb7f5bc2eb592bd5cd4f91f179fb20cc79303998f4adf029198b1a7a77ed;
+    uint256 constant PUB_KEY_Y =
+        0xbbdf2b41926016b8a7e93a7ab44da08d4f4b5e3753687eac5b8dddcf5517e872;
+    uint256 constant R =
+        0xaa1ece6f14eb737890608332acf4a21b33cc70e1007d011512e5737b9e714c13;
+    uint256 constant S =
+        0x18733351c40e8ea9045915d0924f30524479f22676721a424bb103052a15aa93;
+
+    bytes constant AUTHENTICATOR_DATA =
+        hex"a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce19470500000000";
+    string constant CLIENT_DATA_JSON =
+        '{"type":"webauthn.get","challenge":"ESIzRFVmd4iZAKq7zN3u_wARIjNEVWZ3iJmqu8zd7v8","origin":"https://example.com"}';
+    uint256 constant CHALLENGE_LOCATION = 23;
+    uint256 constant RESPONSE_TYPE_LOCATION = 1;
+
     function setUp() public {
+        vm.etch(P256.VERIFIER, type(P256VerifierStub).runtimeCode);
         verifier = new PasskeyVerifier();
     }
 
-    // This test would require actual WebAuthn test vectors
-    // The structure is provided for integration testing
-    function test_verify_withRealTestVector() public view {
-        // TODO: Add real WebAuthn test vectors for integration testing
-        // This would include:
-        // - A real P-256 key pair
-        // - A signed WebAuthn assertion
-        // - Properly formatted authenticatorData and clientDataJSON
-
-        // For now, we just verify the contract doesn't revert on properly formatted input
-        bytes32 intentHash = bytes32(uint256(1));
-        bytes32 guardianIdentifier = GuardianLib.computePasskeyIdentifier(1, 2);
-
-        bytes memory authenticatorData = new bytes(37);
-        authenticatorData[32] = 0x05; // UP + UV flags
-
+    function test_verify_withStaticValidVector() public view {
+        bytes32 guardianIdentifier = GuardianLib.computePasskeyIdentifier(PUB_KEY_X, PUB_KEY_Y);
         bytes memory proof = abi.encode(
-            authenticatorData,
-            '{"type":"webauthn.get","challenge":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',
-            uint256(25),
-            uint256(1),
-            uint256(1),
-            uint256(1),
-            uint256(1),
-            uint256(2)
+            AUTHENTICATOR_DATA,
+            CLIENT_DATA_JSON,
+            CHALLENGE_LOCATION,
+            RESPONSE_TYPE_LOCATION,
+            R,
+            S,
+            PUB_KEY_X,
+            PUB_KEY_Y
         );
 
-        // Should not revert, but will return false due to invalid signature
-        bool result = verifier.verify(guardianIdentifier, intentHash, proof);
+        bool result = verifier.verify(guardianIdentifier, INTENT_HASH, proof);
+        assertTrue(result);
+    }
+
+    function test_verify_withStaticTamperedVector() public view {
+        bytes32 guardianIdentifier = GuardianLib.computePasskeyIdentifier(PUB_KEY_X, PUB_KEY_Y);
+        bytes memory proof = abi.encode(
+            AUTHENTICATOR_DATA,
+            CLIENT_DATA_JSON,
+            CHALLENGE_LOCATION + 1, // tampered location; challenge string no longer matches
+            RESPONSE_TYPE_LOCATION,
+            R,
+            S,
+            PUB_KEY_X,
+            PUB_KEY_Y
+        );
+
+        bool result = verifier.verify(guardianIdentifier, INTENT_HASH, proof);
         assertFalse(result);
     }
 }

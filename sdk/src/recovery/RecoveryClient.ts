@@ -5,6 +5,8 @@ import { AuthManager } from '../auth/AuthManager';
 import { isValidIntent } from '../auth/utils/eip712';
 import type { Guardian, RecoveryIntent, RecoverySession, RecoveryPolicy, GuardianProof } from '../types';
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 export interface RecoveryClientConfig {
   publicClient: PublicClient;
   walletClient?: WalletClient;
@@ -70,6 +72,9 @@ export class RecoveryClient {
 
     // Get the deployed RecoveryManager address from the factory
     const rmAddress = await this.factory.getRecoveryManager(policy.wallet);
+    if (rmAddress.toLowerCase() === ZERO_ADDRESS) {
+      throw new Error('Factory returned zero RecoveryManager address');
+    }
 
     // Store it for future use
     this.setRecoveryManager(rmAddress);
