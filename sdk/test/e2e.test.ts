@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, sign as signMessage, type KeyObject } from 'node:crypto';
 import path from 'node:path';
@@ -38,7 +38,9 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const CONTRACTS_OUT_DIR = path.resolve(REPO_ROOT, 'contracts', 'out');
+const CONTRACTS_OUT_DIR = process.env.CONTRACTS_OUT_DIR
+  ? path.resolve(process.env.CONTRACTS_OUT_DIR)
+  : path.resolve(REPO_ROOT, 'contracts', 'out');
 const ZKJWT_CIRCUIT_DIR = path.resolve(REPO_ROOT, 'circuits', 'zkjwt');
 const ZKJWT_SCRIPTS_DIR = path.resolve(ZKJWT_CIRCUIT_DIR, 'scripts');
 const NARGO_HOME = path.resolve(REPO_ROOT, '.nargo');
@@ -81,8 +83,34 @@ function artifactPath(relativePath: string): string {
   return path.join(CONTRACTS_OUT_DIR, relativePath);
 }
 
+function resolveArtifactPath(relativePath: string): string {
+  const expectedPath = artifactPath(relativePath);
+  if (existsSync(expectedPath)) {
+    return expectedPath;
+  }
+
+  const artifactDir = path.dirname(expectedPath);
+  const artifactFileName = path.basename(expectedPath, '.json');
+
+  if (!existsSync(artifactDir)) {
+    throw new Error(`Artifact directory not found: ${artifactDir}`);
+  }
+
+  const versionedCandidates = readdirSync(artifactDir)
+    .filter(
+      (entry) => entry.startsWith(`${artifactFileName}.`) && entry.endsWith('.json'),
+    )
+    .sort();
+
+  if (versionedCandidates.length > 0) {
+    return path.join(artifactDir, versionedCandidates[versionedCandidates.length - 1]);
+  }
+
+  throw new Error(`Artifact not found: ${expectedPath}`);
+}
+
 function readArtifact(relativePath: string): FoundryArtifact {
-  const json = readFileSync(artifactPath(relativePath), 'utf8');
+  const json = readFileSync(resolveArtifactPath(relativePath), 'utf8');
   return JSON.parse(json) as FoundryArtifact;
 }
 
