@@ -32,7 +32,7 @@
 - SDK ↔ Contract integration tests
 - Testnet deployment
 
-## Phase 5: Integration testing // Ambire Wallet
+## Phase 5: Integration testing // Ambire Wallet Fork
 
-- Integration with Ambire wallet
+- Integration into an Ambire wallet fork
 - Full recovery flow testing
