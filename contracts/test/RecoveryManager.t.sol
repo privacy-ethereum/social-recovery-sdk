@@ -456,6 +456,27 @@ contract RecoveryManager_StartRecovery is RecoveryManagerTestBase {
         vm.expectRevert(IRecoveryManager.InvalidProof.selector);
         rm.startRecovery(intent, 0, proof);
     }
+
+    function test_startRecovery_revertDoesNotMutateSessionState() public {
+        EIP712Lib.RecoveryIntent memory intent = _createIntent();
+        intent.deadline = block.timestamp + CHALLENGE_PERIOD; // invalid boundary
+        bytes32 intentHash = _createIntentHash(intent);
+        bytes memory proof = _signIntent(guardian1Key, intentHash);
+
+        vm.expectRevert(IRecoveryManager.InvalidIntent.selector);
+        rm.startRecovery(intent, 0, proof);
+
+        assertFalse(rm.isRecoveryActive());
+        assertEq(rm.nonce(), 0);
+        assertFalse(rm.hasApproved(guardian1Id));
+        (bytes32 sessionHash, address sessionNewOwner, uint256 deadline, uint256 thresholdMetAt, uint256 approvalCount)
+            = rm.getSession();
+        assertEq(sessionHash, bytes32(0));
+        assertEq(sessionNewOwner, address(0));
+        assertEq(deadline, 0);
+        assertEq(thresholdMetAt, 0);
+        assertEq(approvalCount, 0);
+    }
 }
 
 // ============ submitProof Tests ============
@@ -814,6 +835,21 @@ contract RecoveryManager_ClearExpiredRecovery is RecoveryManagerTestBase {
         rm.clearExpiredRecovery();
         assertFalse(rm.isRecoveryActive());
     }
+
+    function test_clearExpiredRecovery_clearsAllApprovals() public {
+        bytes32 intentHash = _startRecoveryWithGuardian1();
+        bytes memory proof2 = _signIntent(guardian2Key, intentHash);
+        rm.submitProof(1, proof2);
+
+        assertTrue(rm.hasApproved(guardian1Id));
+        assertTrue(rm.hasApproved(guardian2Id));
+
+        vm.warp(block.timestamp + DEADLINE + 1);
+        rm.clearExpiredRecovery();
+
+        assertFalse(rm.hasApproved(guardian1Id));
+        assertFalse(rm.hasApproved(guardian2Id));
+    }
 }
 
 // ============ updatePolicy Tests ============
@@ -852,6 +888,25 @@ contract RecoveryManager_UpdatePolicy is RecoveryManagerTestBase {
         rm.updatePolicy(newGuardians, 1, 1 days);
 
         assertFalse(rm.isRecoveryActive());
+    }
+
+    function test_updatePolicy_clearsAllSessionApprovals() public {
+        bytes32 intentHash = _startRecoveryWithGuardian1();
+        bytes memory proof2 = _signIntent(guardian2Key, intentHash);
+        rm.submitProof(1, proof2);
+
+        assertTrue(rm.hasApproved(guardian1Id));
+        assertTrue(rm.hasApproved(guardian2Id));
+
+        GuardianLib.Guardian[] memory newGuardians = new GuardianLib.Guardian[](1);
+        newGuardians[0] = GuardianLib.Guardian(GuardianLib.GuardianType.EOA, guardian3Id);
+
+        vm.prank(walletOwner);
+        rm.updatePolicy(newGuardians, 1, 1 days);
+
+        assertFalse(rm.hasApproved(guardian1Id));
+        assertFalse(rm.hasApproved(guardian2Id));
+        assertFalse(rm.hasApproved(guardian3Id));
     }
 
     function test_updatePolicy_emitsEvent() public {

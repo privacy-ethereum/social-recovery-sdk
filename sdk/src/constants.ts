@@ -31,14 +31,26 @@ export const RECOVERY_INTENT_TYPES = {
 export const P256_PRECOMPILE_ADDRESS: Address = '0x0000000000000000000000000000000000000100';
 
 /**
+ * Deterministic deployment address for daimo-eth/p256-verifier used by PasskeyVerifier.sol
+ */
+export const P256_VERIFIER_ADDRESS: Address = '0xc2b78104907F722DABAc4C69f826a522B2754De4';
+
+/**
  * Default challenge period in seconds (1 day)
  */
 export const DEFAULT_CHALLENGE_PERIOD = 86400n;
 
 /**
- * Default recovery intent deadline (24 hours from now)
+ * Minimum extra validity window beyond challengePeriod for intent defaults
  */
-export const DEFAULT_DEADLINE_SECONDS = 86400;
+export const MIN_INTENT_DEADLINE_BUFFER_SECONDS = 300;
+
+/**
+ * Default recovery intent deadline.
+ * Must be strictly greater than DEFAULT_CHALLENGE_PERIOD to satisfy RecoveryManager.startRecovery.
+ */
+export const DEFAULT_DEADLINE_SECONDS =
+  Number(DEFAULT_CHALLENGE_PERIOD) + MIN_INTENT_DEADLINE_BUFFER_SECONDS;
 
 /**
  * Deployed verifier addresses per chain

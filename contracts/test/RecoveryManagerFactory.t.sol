@@ -4,6 +4,7 @@ pragma solidity ^0.8.21;
 import {Test} from "forge-std/Test.sol";
 import {RecoveryManager} from "../src/RecoveryManager.sol";
 import {RecoveryManagerFactory} from "../src/RecoveryManagerFactory.sol";
+import {IRecoveryManager} from "../src/interfaces/IRecoveryManager.sol";
 import {GuardianLib} from "../src/libraries/GuardianLib.sol";
 
 /// @dev Minimal mock verifier for factory tests
@@ -127,6 +128,33 @@ contract RecoveryManagerFactoryTest is Test {
 
         vm.expectRevert(RecoveryManagerFactory.AlreadyDeployed.selector);
         factory.deployRecoveryManager(address(wallet), guardians, 1, 1 days);
+    }
+
+    function test_deployRecoveryManager_revertsOnZeroWallet() public {
+        GuardianLib.Guardian[] memory guardians = _createGuardians(1);
+
+        vm.expectRevert(RecoveryManager.ZeroWallet.selector);
+        factory.deployRecoveryManager(address(0), guardians, 1, 1 days);
+
+        assertEq(factory.getRecoveryManager(address(0)), address(0));
+    }
+
+    function test_deployRecoveryManager_revertsOnZeroGuardians() public {
+        GuardianLib.Guardian[] memory guardians = new GuardianLib.Guardian[](0);
+
+        vm.expectRevert(IRecoveryManager.InvalidPolicy.selector);
+        factory.deployRecoveryManager(address(wallet), guardians, 1, 1 days);
+
+        assertEq(factory.getRecoveryManager(address(wallet)), address(0));
+    }
+
+    function test_deployRecoveryManager_revertsOnZeroThreshold() public {
+        GuardianLib.Guardian[] memory guardians = _createGuardians(1);
+
+        vm.expectRevert(IRecoveryManager.InvalidPolicy.selector);
+        factory.deployRecoveryManager(address(wallet), guardians, 0, 1 days);
+
+        assertEq(factory.getRecoveryManager(address(wallet)), address(0));
     }
 
     function test_implementation_cannotBeReinitialized() public {

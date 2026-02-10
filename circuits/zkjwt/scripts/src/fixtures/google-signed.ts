@@ -21,6 +21,11 @@ export interface GoogleSignedFixtureOptions {
   jwt: string;
   salt: bigint;
   intentHash: bigint;
+  /**
+   * Allows generation to continue with invalid claims (debug-only).
+   * Disabled by default to avoid opaque downstream circuit failures.
+   */
+  allowInsecureClaims?: boolean;
 }
 
 export interface GoogleSignedFixture {
@@ -40,7 +45,7 @@ export interface GoogleSignedFixture {
 export async function generateGoogleSignedFixture(
   options: GoogleSignedFixtureOptions
 ): Promise<GoogleSignedFixture> {
-  const { jwt, salt, intentHash } = options;
+  const { jwt, salt, intentHash, allowInsecureClaims = false } = options;
 
   // 1. Decode header to get kid
   const header = decodeJwtHeader(jwt);
@@ -62,14 +67,23 @@ export async function generateGoogleSignedFixture(
   }
 
   if (payload.email_verified !== true) {
-    console.warn("  ⚠ Warning: email_verified is not true in this JWT.");
+    if (!allowInsecureClaims) {
+      throw new Error(
+        "JWT payload has email_verified !== true. " +
+          "Use a verified Google token or pass --allow-insecure-claims for explicit debug mode."
+      );
+    }
+    console.warn("  ⚠ Warning: email_verified is not true in this JWT (allow-insecure-claims enabled).");
   }
 
   const exp = payload.exp as number | undefined;
   if (exp && exp < Math.floor(Date.now() / 1000)) {
-    console.warn(
-      "  ⚠ Warning: JWT is expired. The circuit does not check expiry, so this is OK for testing."
-    );
+    if (!allowInsecureClaims) {
+      throw new Error(
+        "JWT is expired. Use a fresh Google id_token or pass --allow-insecure-claims for explicit debug mode."
+      );
+    }
+    console.warn("  ⚠ Warning: JWT is expired (allow-insecure-claims enabled).");
   }
 
   // 4. Extract circuit inputs (reuse existing utility)

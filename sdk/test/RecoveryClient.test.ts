@@ -10,10 +10,11 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 
 function createMockPublicClient() {
   return {
-    readContract: vi.fn(),
+    readContract: vi.fn().mockResolvedValue(0n),
     getChainId: vi.fn().mockResolvedValue(1),
     waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' }),
     getBlock: vi.fn().mockResolvedValue({ timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
+    getCode: vi.fn().mockResolvedValue('0x1234'),
   } as unknown as PublicClient;
 }
 
@@ -187,6 +188,97 @@ describe('RecoveryClient', () => {
         client.startRecovery({ intent: staleByChainTimeIntent, guardianIndex: 0n, proof }),
       ).rejects.toThrow('invalid');
     });
+
+    it('should reject intent when recoveryManager does not match configured contract', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.getBlock as any).mockResolvedValueOnce({ timestamp: 1_000n });
+      (publicClient.readContract as any).mockResolvedValueOnce(600n); // challengePeriod
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const intent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: 2_000n,
+        chainId: 1n,
+        recoveryManager: '0x9999999999999999999999999999999999999999' as Address,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: GuardianType.EOA,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(client.startRecovery({ intent, guardianIndex: 0n, proof })).rejects.toThrow('invalid');
+    });
+
+    it('should reject intent when deadline does not exceed challenge period', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.getBlock as any).mockResolvedValueOnce({ timestamp: 1_000n });
+      (publicClient.readContract as any).mockResolvedValueOnce(600n); // challengePeriod
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const intent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: 1_600n, // exactly at now + challengePeriod, invalid on-chain
+        chainId: 1n,
+        recoveryManager: RM_ADDRESS,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: GuardianType.EOA,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(client.startRecovery({ intent, guardianIndex: 0n, proof })).rejects.toThrow('invalid');
+    });
+
+    it('should reject passkey proof submission when P-256 verifier dependency is missing', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.getCode as any).mockResolvedValueOnce('0x');
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const intent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + 86400),
+        chainId: 1n,
+        recoveryManager: RM_ADDRESS,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: GuardianType.Passkey,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(client.startRecovery({ intent, guardianIndex: 0n, proof })).rejects.toThrow(
+        'Passkey proofs require P-256 verifier bytecode',
+      );
+    });
   });
 
   describe('query methods with recovery manager', () => {
@@ -311,6 +403,31 @@ describe('RecoveryClient', () => {
       });
 
       expect(txHash).toBe('0xtxhash');
+    });
+
+    it('should reject passkey proof submission when P-256 verifier dependency is missing', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.getCode as any).mockResolvedValueOnce('0x');
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: GuardianType.Passkey,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(
+        client.submitProof({
+          guardianIndex: 1n,
+          proof,
+        }),
+      ).rejects.toThrow('Passkey proofs require P-256 verifier bytecode');
     });
   });
 

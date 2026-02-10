@@ -3,7 +3,8 @@ import { RecoveryManagerContract } from '../contracts/RecoveryManagerContract';
 import { FactoryContract } from '../contracts/FactoryContract';
 import { AuthManager } from '../auth/AuthManager';
 import { isValidIntent } from '../auth/utils/eip712';
-import type { Guardian, RecoveryIntent, RecoverySession, RecoveryPolicy, GuardianProof } from '../types';
+import { P256_VERIFIER_ADDRESS } from '../constants';
+import { GuardianType, type Guardian, type RecoveryIntent, type RecoverySession, type RecoveryPolicy, type GuardianProof } from '../types';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -90,10 +91,22 @@ export class RecoveryClient {
     proof: GuardianProof;
   }): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
-    const latestBlock = await this.publicClient.getBlock({ blockTag: 'latest' });
+    const [latestBlock, challengePeriod] = await Promise.all([
+      this.publicClient.getBlock({ blockTag: 'latest' }),
+      rm.challengePeriod(),
+    ]);
 
-    if (!isValidIntent(params.intent, { nowSeconds: latestBlock.timestamp })) {
+    if (
+      !isValidIntent(params.intent, {
+        nowSeconds: latestBlock.timestamp,
+        expectedRecoveryManager: rm.address,
+        challengePeriodSeconds: challengePeriod,
+      })
+    ) {
       throw new Error('Recovery intent is invalid');
+    }
+    if (params.proof.guardianType === GuardianType.Passkey) {
+      await this.assertPasskeyVerifierAvailable();
     }
 
     return rm.startRecovery(params.intent, params.guardianIndex, params.proof.proof);
@@ -101,6 +114,9 @@ export class RecoveryClient {
 
   async submitProof(params: { guardianIndex: bigint; proof: GuardianProof }): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
+    if (params.proof.guardianType === GuardianType.Passkey) {
+      await this.assertPasskeyVerifierAvailable();
+    }
     return rm.submitProof(params.guardianIndex, params.proof.proof);
   }
 
@@ -200,5 +216,15 @@ export class RecoveryClient {
       throw new Error('RecoveryManager address not set. Call setRecoveryManager() or deployRecoveryManager() first.');
     }
     return this.recoveryManager;
+  }
+
+  private async assertPasskeyVerifierAvailable(): Promise<void> {
+    const code = await this.publicClient.getCode({ address: P256_VERIFIER_ADDRESS });
+    if (!code || code === '0x') {
+      throw new Error(
+        `Passkey proofs require P-256 verifier bytecode at ${P256_VERIFIER_ADDRESS}. ` +
+          'Deploy the dependency before submitting passkey proofs.',
+      );
+    }
   }
 }

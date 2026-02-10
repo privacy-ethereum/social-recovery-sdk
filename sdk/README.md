@@ -11,6 +11,14 @@ npm install && npm run build && npm test
 npm run test:e2e
 ```
 
+## Passkey Prerequisite
+
+Passkey recovery depends on the `p256-verifier` contract deployed at the deterministic address
+`0xc2b78104907F722DABAc4C69f826a522B2754De4` (used by on-chain `PasskeyVerifier`).
+
+`RecoveryClient` now checks that bytecode exists at that address before submitting passkey proofs
+(`startRecovery` and `submitProof`) and throws early if the dependency is missing.
+
 ## Directory Structure
 
 ```

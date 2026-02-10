@@ -6,6 +6,7 @@
  *   npm run generate
  *   npm run generate -- --email="test@example.com" --salt=12345 --intent-hash=42
  *   npm run generate:google -- --jwt="<google id_token>" --salt=12345 --intent-hash=1
+ *   npm run generate:google -- --jwt="<google id_token>" --allow-insecure-claims
  */
 import path from "path";
 import { fileURLToPath } from "url";
@@ -22,6 +23,7 @@ interface CliArgs {
   salt: bigint;
   intentHash: bigint;
   jwt?: string;
+  allowInsecureClaims: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ function parseArgs(): CliArgs {
     email: "alice@test.com",
     salt: 12345n,
     intentHash: 1n, // Must be non-zero (circuit constraint)
+    allowInsecureClaims: false,
   };
 
   for (const arg of args) {
@@ -51,6 +54,8 @@ function parseArgs(): CliArgs {
       result.intentHash = BigInt(arg.slice("--intent-hash=".length));
     } else if (arg.startsWith("--jwt=")) {
       result.jwt = arg.slice("--jwt=".length);
+    } else if (arg === "--allow-insecure-claims") {
+      result.allowInsecureClaims = true;
     }
   }
 
@@ -68,6 +73,9 @@ async function main() {
   console.log(`  Fixture: ${args.fixture}`);
   console.log(`  Salt: ${args.salt}`);
   console.log(`  Intent Hash: ${args.intentHash}`);
+  if (args.fixture === "google") {
+    console.log(`  Allow insecure claims: ${args.allowInsecureClaims}`);
+  }
   console.log("");
 
   let inputs: ZkJwtInputs;
@@ -87,6 +95,7 @@ async function main() {
       jwt: args.jwt,
       salt: args.salt,
       intentHash: args.intentHash,
+      allowInsecureClaims: args.allowInsecureClaims,
     });
 
     console.log(`  Email: ${fixture.email}`);

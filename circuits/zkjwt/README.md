@@ -87,7 +87,8 @@ bb verify -p ./target/proof -k ./target/vk
 ```
 
 **Notes:**
-- The `id_token` expires after ~1 hour, but the circuit does not check expiry — an expired token still works for testing.
+- By default, the generator now rejects expired tokens and `email_verified !== true` to avoid opaque constraint failures.
+- If you intentionally want unsafe debug fixtures, pass `--allow-insecure-claims`.
 - The JWT must contain an `email` claim. This requires the `email` scope during OAuth authorization.
 
 ## Circuit I/O
