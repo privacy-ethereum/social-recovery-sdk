@@ -3,6 +3,8 @@ import type { Address, Hex } from 'viem';
 import { GuardianType, type Guardian, type RecoveryPolicy, type P256PublicKey } from '../types';
 import { DEFAULT_CHALLENGE_PERIOD } from '../constants';
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 export class PolicyBuilder {
   private _wallet: Address | null = null;
   private _threshold: bigint = 0n;
@@ -51,6 +53,9 @@ export class PolicyBuilder {
   build(): RecoveryPolicy {
     if (!this._wallet) {
       throw new Error('Wallet address is required');
+    }
+    if (this._wallet.toLowerCase() === ZERO_ADDRESS) {
+      throw new Error('Wallet address cannot be zero');
     }
     if (this._guardians.length === 0) {
       throw new Error('At least one guardian is required');

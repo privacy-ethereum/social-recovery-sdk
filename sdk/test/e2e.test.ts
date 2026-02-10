@@ -204,6 +204,17 @@ async function waitForTx(publicClient: PublicClient, hash: Hex): Promise<void> {
   await publicClient.waitForTransactionReceipt({ hash });
 }
 
+async function increaseTime(publicClient: PublicClient, seconds: number): Promise<void> {
+  await publicClient.request({
+    method: 'anvil_increaseTime',
+    params: [seconds],
+  });
+  await publicClient.request({
+    method: 'anvil_mine',
+    params: [1],
+  });
+}
+
 function runCommand(command: string, args: string[], cwd: string): void {
   try {
     execFileSync(command, args, {
@@ -486,22 +497,39 @@ describe.sequential('SDK End-to-End (Anvil)', () => {
     return { walletAddress, recoveryManagerAddress, ownerClient };
   }
 
+  async function createChainTimedIntent(params: {
+    walletAddress: Address;
+    recoveryManagerAddress: Address;
+    nonce: bigint;
+    deadlineSeconds: number;
+  }): Promise<RecoveryIntent> {
+    const intent = createRecoveryIntent({
+      wallet: params.walletAddress,
+      newOwner: newOwnerAddress,
+      recoveryManager: params.recoveryManagerAddress,
+      nonce: params.nonce,
+      chainId,
+      deadlineSeconds: params.deadlineSeconds,
+    });
+    const latestBlock = await publicClient.getBlock({ blockTag: 'latest' });
+    intent.deadline = latestBlock.timestamp + BigInt(params.deadlineSeconds);
+    return intent;
+  }
+
   it('EOA flow: SDK can recover wallet through deployed contracts', async () => {
     const policy = new PolicyBuilder()
       .addEoaGuardian(guardian1WalletClient.account.address)
       .addEoaGuardian(guardian2WalletClient.account.address)
       .setThreshold(2)
-      .setChallengePeriod(0);
+      .setChallengePeriod(600);
 
     const { walletAddress, recoveryManagerAddress, ownerClient } =
       await deployWalletAndRecoveryManager(policy);
 
-    const intent = createRecoveryIntent({
-      wallet: walletAddress,
-      newOwner: newOwnerAddress,
-      recoveryManager: recoveryManagerAddress,
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
       nonce: await ownerClient.getNonce(),
-      chainId,
       deadlineSeconds: 3600,
     });
 
@@ -542,6 +570,15 @@ describe.sequential('SDK End-to-End (Anvil)', () => {
     });
     await waitForTx(publicClient, submitTx);
 
+    const readyBefore = await guardian2Client.isReadyToExecute();
+    expect(readyBefore).toBe(false);
+    await expect(guardian2Client.executeRecovery()).rejects.toThrow();
+
+    await increaseTime(publicClient, 601);
+
+    const readyAfter = await guardian2Client.isReadyToExecute();
+    expect(readyAfter).toBe(true);
+
     const executeTx = await guardian2Client.executeRecovery();
     await waitForTx(publicClient, executeTx);
 
@@ -551,6 +588,268 @@ describe.sequential('SDK End-to-End (Anvil)', () => {
       functionName: 'owner',
     });
     expect(currentOwner.toLowerCase()).toBe(newOwnerAddress.toLowerCase());
+  });
+
+  it('Owner cancel flow: active recovery can be cancelled during challenge period', async () => {
+    const policy = new PolicyBuilder()
+      .addEoaGuardian(guardian1WalletClient.account.address)
+      .setThreshold(1)
+      .setChallengePeriod(3600);
+
+    const { walletAddress, recoveryManagerAddress, ownerClient } =
+      await deployWalletAndRecoveryManager(policy);
+
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
+      nonce: await ownerClient.getNonce(),
+      deadlineSeconds: 7200,
+    });
+
+    const guardianAdapter = new EoaAdapter({ walletClient: guardian1WalletClient });
+    const guardianProof = await guardianAdapter.generateProof(
+      intent,
+      pad(guardian1WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    expect(guardianProof.success).toBe(true);
+
+    const guardianClient = new RecoveryClient({
+      publicClient,
+      walletClient: guardian1WalletClient,
+      recoveryManagerAddress,
+    });
+
+    const startTx = await guardianClient.startRecovery({
+      intent,
+      guardianIndex: 0n,
+      proof: guardianProof.proof!,
+    });
+    await waitForTx(publicClient, startTx);
+    await expect(guardianClient.executeRecovery()).rejects.toThrow();
+
+    const cancelTx = await ownerClient.cancelRecovery();
+    await waitForTx(publicClient, cancelTx);
+
+    expect(await ownerClient.isRecoveryActive()).toBe(false);
+    expect(await ownerClient.getNonce()).toBe(1n);
+  });
+
+  it('clearExpiredRecovery flow: expired session is clearable and new session can start', async () => {
+    const policy = new PolicyBuilder()
+      .addEoaGuardian(guardian1WalletClient.account.address)
+      .setThreshold(1)
+      .setChallengePeriod(3600);
+
+    const { walletAddress, recoveryManagerAddress, ownerClient } =
+      await deployWalletAndRecoveryManager(policy);
+
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
+      nonce: await ownerClient.getNonce(),
+      deadlineSeconds: 7200,
+    });
+
+    const guardianAdapter = new EoaAdapter({ walletClient: guardian1WalletClient });
+    const guardianProof = await guardianAdapter.generateProof(
+      intent,
+      pad(guardian1WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    expect(guardianProof.success).toBe(true);
+
+    const guardianClient = new RecoveryClient({
+      publicClient,
+      walletClient: guardian1WalletClient,
+      recoveryManagerAddress,
+    });
+
+    const startTx = await guardianClient.startRecovery({
+      intent,
+      guardianIndex: 0n,
+      proof: guardianProof.proof!,
+    });
+    await waitForTx(publicClient, startTx);
+
+    await increaseTime(publicClient, 7201);
+
+    const executorClient = new RecoveryClient({
+      publicClient,
+      walletClient: executorWalletClient,
+      recoveryManagerAddress,
+    });
+
+    const clearTx = await executorClient.clearExpiredRecovery();
+    await waitForTx(publicClient, clearTx);
+
+    expect(await ownerClient.isRecoveryActive()).toBe(false);
+    expect(await ownerClient.getNonce()).toBe(1n);
+
+    const replacementIntent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
+      nonce: await ownerClient.getNonce(),
+      deadlineSeconds: 7200,
+    });
+    const replacementProof = await guardianAdapter.generateProof(
+      replacementIntent,
+      pad(guardian1WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    expect(replacementProof.success).toBe(true);
+
+    const restartTx = await guardianClient.startRecovery({
+      intent: replacementIntent,
+      guardianIndex: 0n,
+      proof: replacementProof.proof!,
+    });
+    await waitForTx(publicClient, restartTx);
+    expect(await ownerClient.isRecoveryActive()).toBe(true);
+  });
+
+  it('Mixed guardians flow: EOA + Passkey can satisfy threshold', async () => {
+    const passkeySigner = createPasskeySigner();
+
+    const policy = new PolicyBuilder()
+      .addEoaGuardian(guardian1WalletClient.account.address)
+      .addPasskeyGuardian({ x: passkeySigner.publicKeyX, y: passkeySigner.publicKeyY })
+      .addEoaGuardian(guardian2WalletClient.account.address)
+      .setThreshold(2)
+      .setChallengePeriod(0);
+
+    const { walletAddress, recoveryManagerAddress, ownerClient } =
+      await deployWalletAndRecoveryManager(policy);
+
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
+      nonce: await ownerClient.getNonce(),
+      deadlineSeconds: 3600,
+    });
+
+    const guardian1Adapter = new EoaAdapter({ walletClient: guardian1WalletClient });
+    const guardian1Proof = await guardian1Adapter.generateProof(
+      intent,
+      pad(guardian1WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    expect(guardian1Proof.success).toBe(true);
+
+    const guardian1Client = new RecoveryClient({
+      publicClient,
+      walletClient: guardian1WalletClient,
+      recoveryManagerAddress,
+    });
+    const startTx = await guardian1Client.startRecovery({
+      intent,
+      guardianIndex: 0n,
+      proof: guardian1Proof.proof!,
+    });
+    await waitForTx(publicClient, startTx);
+
+    const passkeyProof = buildPasskeyProof(intent, passkeySigner);
+    const executorClient = new RecoveryClient({
+      publicClient,
+      walletClient: executorWalletClient,
+      recoveryManagerAddress,
+    });
+    const passkeySubmitTx = await executorClient.submitProof({
+      guardianIndex: 1n,
+      proof: passkeyProof,
+    });
+    await waitForTx(publicClient, passkeySubmitTx);
+
+    const executeTx = await executorClient.executeRecovery();
+    await waitForTx(publicClient, executeTx);
+
+    const currentOwner = await publicClient.readContract({
+      address: walletAddress,
+      abi: sharedDeployment.mockWalletArtifact.abi,
+      functionName: 'owner',
+    });
+    expect(currentOwner.toLowerCase()).toBe(newOwnerAddress.toLowerCase());
+  });
+
+  it('Negative path flow: wrong guardian/proof and duplicate approvals revert', async () => {
+    const policy = new PolicyBuilder()
+      .addEoaGuardian(guardian1WalletClient.account.address)
+      .addEoaGuardian(guardian2WalletClient.account.address)
+      .setThreshold(2)
+      .setChallengePeriod(0);
+
+    const { walletAddress, recoveryManagerAddress, ownerClient } =
+      await deployWalletAndRecoveryManager(policy);
+
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
+      nonce: await ownerClient.getNonce(),
+      deadlineSeconds: 3600,
+    });
+
+    const guardian1Adapter = new EoaAdapter({ walletClient: guardian1WalletClient });
+    const guardian2Adapter = new EoaAdapter({ walletClient: guardian2WalletClient });
+
+    const guardian1Proof = await guardian1Adapter.generateProof(
+      intent,
+      pad(guardian1WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    const guardian2Proof = await guardian2Adapter.generateProof(
+      intent,
+      pad(guardian2WalletClient.account.address, { size: 32 }) as Hex,
+    );
+    expect(guardian1Proof.success).toBe(true);
+    expect(guardian2Proof.success).toBe(true);
+
+    const guardian1Client = new RecoveryClient({
+      publicClient,
+      walletClient: guardian1WalletClient,
+      recoveryManagerAddress,
+    });
+    const guardian2Client = new RecoveryClient({
+      publicClient,
+      walletClient: guardian2WalletClient,
+      recoveryManagerAddress,
+    });
+
+    await expect(
+      guardian1Client.startRecovery({
+        intent,
+        guardianIndex: 1n,
+        proof: guardian1Proof.proof!,
+      }),
+    ).rejects.toThrow();
+
+    const startTx = await guardian1Client.startRecovery({
+      intent,
+      guardianIndex: 0n,
+      proof: guardian1Proof.proof!,
+    });
+    await waitForTx(publicClient, startTx);
+
+    await expect(
+      guardian2Client.submitProof({
+        guardianIndex: 99n,
+        proof: guardian2Proof.proof!,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      guardian2Client.submitProof({
+        guardianIndex: 1n,
+        proof: guardian1Proof.proof!,
+      }),
+    ).rejects.toThrow();
+
+    const submitTx = await guardian2Client.submitProof({
+      guardianIndex: 1n,
+      proof: guardian2Proof.proof!,
+    });
+    await waitForTx(publicClient, submitTx);
+
+    await expect(
+      guardian2Client.submitProof({
+        guardianIndex: 1n,
+        proof: guardian2Proof.proof!,
+      }),
+    ).rejects.toThrow();
   });
 
   it('Passkey flow: deterministic WebAuthn-format proof succeeds on-chain', async () => {
@@ -564,12 +863,10 @@ describe.sequential('SDK End-to-End (Anvil)', () => {
     const { walletAddress, recoveryManagerAddress, ownerClient } =
       await deployWalletAndRecoveryManager(policy);
 
-    const intent = createRecoveryIntent({
-      wallet: walletAddress,
-      newOwner: newOwnerAddress,
-      recoveryManager: recoveryManagerAddress,
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
       nonce: await ownerClient.getNonce(),
-      chainId,
       deadlineSeconds: 3600,
     });
     const deterministicProof = buildPasskeyProof(intent, passkeySigner);
@@ -611,12 +908,10 @@ describe.sequential('SDK End-to-End (Anvil)', () => {
     const { walletAddress, recoveryManagerAddress, ownerClient } =
       await deployWalletAndRecoveryManager(policy);
 
-    const intent = createRecoveryIntent({
-      wallet: walletAddress,
-      newOwner: newOwnerAddress,
-      recoveryManager: recoveryManagerAddress,
+    const intent = await createChainTimedIntent({
+      walletAddress,
+      recoveryManagerAddress,
       nonce: await ownerClient.getNonce(),
-      chainId,
       deadlineSeconds: 3600,
     });
 

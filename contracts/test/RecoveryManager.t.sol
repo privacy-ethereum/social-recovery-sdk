@@ -216,6 +216,24 @@ contract RecoveryManager_Initialization is RecoveryManagerTestBase {
         proxy.initialize(address(0), guardians, 2, 1 days, address(passkeyVerifier), address(zkJwtVerifier));
     }
 
+    function test_initialize_revertsOnZeroPasskeyVerifier() public {
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager proxy = RecoveryManager(_deployProxy(address(impl)));
+        GuardianLib.Guardian[] memory guardians = _createEoaGuardians3();
+
+        vm.expectRevert(RecoveryManager.ZeroPasskeyVerifier.selector);
+        proxy.initialize(address(wallet), guardians, 2, 1 days, address(0), address(zkJwtVerifier));
+    }
+
+    function test_initialize_revertsOnZeroZkJwtVerifier() public {
+        RecoveryManager impl = new RecoveryManager();
+        RecoveryManager proxy = RecoveryManager(_deployProxy(address(impl)));
+        GuardianLib.Guardian[] memory guardians = _createEoaGuardians3();
+
+        vm.expectRevert(RecoveryManager.ZeroZkJwtVerifier.selector);
+        proxy.initialize(address(wallet), guardians, 2, 1 days, address(passkeyVerifier), address(0));
+    }
+
     function test_initialize_revertsOnZeroThreshold() public {
         RecoveryManager impl = new RecoveryManager();
         RecoveryManager proxy = RecoveryManager(_deployProxy(address(impl)));

@@ -15,6 +15,8 @@ contract RecoveryManager is IRecoveryManager {
 
     error AlreadyInitialized();
     error ZeroWallet();
+    error ZeroPasskeyVerifier();
+    error ZeroZkJwtVerifier();
 
     // ============ Storage ============
 
@@ -59,6 +61,8 @@ contract RecoveryManager is IRecoveryManager {
     ) external {
         if (_initialized) revert AlreadyInitialized();
         if (_wallet == address(0)) revert ZeroWallet();
+        if (_passkeyVerifier == address(0)) revert ZeroPasskeyVerifier();
+        if (_zkJwtVerifier == address(0)) revert ZeroZkJwtVerifier();
         _initialized = true;
 
         wallet = _wallet;

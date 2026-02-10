@@ -90,8 +90,9 @@ export class RecoveryClient {
     proof: GuardianProof;
   }): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
+    const latestBlock = await this.publicClient.getBlock({ blockTag: 'latest' });
 
-    if (!isValidIntent(params.intent)) {
+    if (!isValidIntent(params.intent, { nowSeconds: latestBlock.timestamp })) {
       throw new Error('Recovery intent is invalid');
     }
 
@@ -116,6 +117,15 @@ export class RecoveryClient {
   async clearExpiredRecovery(): Promise<Hex> {
     const rm = this.getRecoveryManagerOrThrow();
     return rm.clearExpiredRecovery();
+  }
+
+  async updatePolicy(params: {
+    guardians: Guardian[];
+    threshold: bigint;
+    challengePeriod: bigint;
+  }): Promise<Hex> {
+    const rm = this.getRecoveryManagerOrThrow();
+    return rm.updatePolicy(params.guardians, params.threshold, params.challengePeriod);
   }
 
   // --- Queries ---
@@ -156,18 +166,19 @@ export class RecoveryClient {
   async isReadyToExecute(): Promise<boolean> {
     const rm = this.getRecoveryManagerOrThrow();
 
-    const [active, session, threshold, challengePeriod] = await Promise.all([
+    const [active, session, threshold, challengePeriod, latestBlock] = await Promise.all([
       rm.isRecoveryActive(),
       rm.getSession(),
       rm.threshold(),
       rm.challengePeriod(),
+      this.publicClient.getBlock({ blockTag: 'latest' }),
     ]);
 
     if (!active) return false;
     if (session.approvalCount < threshold) return false;
     if (session.thresholdMetAt === 0n) return false;
 
-    const now = BigInt(Math.floor(Date.now() / 1000));
+    const now = latestBlock.timestamp;
     if (now < session.thresholdMetAt + challengePeriod) return false;
     if (now >= session.deadline) return false;
 

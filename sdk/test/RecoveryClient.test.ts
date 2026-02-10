@@ -13,6 +13,7 @@ function createMockPublicClient() {
     readContract: vi.fn(),
     getChainId: vi.fn().mockResolvedValue(1),
     waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' }),
+    getBlock: vi.fn().mockResolvedValue({ timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
   } as unknown as PublicClient;
 }
 
@@ -84,6 +85,9 @@ describe('RecoveryClient', () => {
       await expect(client.executeRecovery()).rejects.toThrow('RecoveryManager address not set');
       await expect(client.cancelRecovery()).rejects.toThrow('RecoveryManager address not set');
       await expect(client.clearExpiredRecovery()).rejects.toThrow('RecoveryManager address not set');
+      await expect(
+        client.updatePolicy({ guardians: [], threshold: 1n, challengePeriod: 0n }),
+      ).rejects.toThrow('RecoveryManager address not set');
     });
   });
 
@@ -120,6 +124,7 @@ describe('RecoveryClient', () => {
       });
 
       expect(txHash).toBe('0xtxhash');
+      expect(publicClient.getBlock).toHaveBeenCalledWith({ blockTag: 'latest' });
     });
 
     it('should reject an invalid intent', async () => {
@@ -149,6 +154,37 @@ describe('RecoveryClient', () => {
 
       await expect(
         client.startRecovery({ intent: expiredIntent, guardianIndex: 0n, proof }),
+      ).rejects.toThrow('invalid');
+    });
+
+    it('should validate deadline against chain time', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+      (publicClient.getBlock as any).mockResolvedValueOnce({ timestamp: 5_000n });
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const staleByChainTimeIntent = {
+        wallet: WALLET_ADDRESS,
+        newOwner: '0x2222222222222222222222222222222222222222' as Address,
+        nonce: 0n,
+        deadline: 4_999n,
+        chainId: 1n,
+        recoveryManager: RM_ADDRESS,
+      };
+
+      const proof = {
+        guardianIdentifier: ('0x' + '11'.repeat(32)) as Hex,
+        guardianType: 0 as any,
+        proof: '0xdeadbeef' as Hex,
+      };
+
+      await expect(
+        client.startRecovery({ intent: staleByChainTimeIntent, guardianIndex: 0n, proof }),
       ).rejects.toThrow('invalid');
     });
   });
@@ -326,6 +362,31 @@ describe('RecoveryClient', () => {
     });
   });
 
+  describe('updatePolicy', () => {
+    it('should forward to recovery manager', async () => {
+      const publicClient = createMockPublicClient();
+      const walletClient = createMockWalletClient();
+
+      const client = new RecoveryClient({
+        publicClient,
+        walletClient,
+        recoveryManagerAddress: RM_ADDRESS,
+      });
+
+      const txHash = await client.updatePolicy({
+        guardians: [
+          {
+            guardianType: GuardianType.EOA,
+            identifier: ('0x' + '11'.repeat(32)) as Hex,
+          },
+        ],
+        threshold: 1n,
+        challengePeriod: 3600n,
+      });
+      expect(txHash).toBe('0xtxhash');
+    });
+  });
+
   describe('isReadyToExecute', () => {
     it('should return false when recovery not active', async () => {
       const publicClient = createMockPublicClient();
@@ -354,19 +415,20 @@ describe('RecoveryClient', () => {
 
     it('should return true when threshold met, challenge elapsed, and deadline valid', async () => {
       const publicClient = createMockPublicClient();
-      const now = BigInt(Math.floor(Date.now() / 1000));
+      const chainNow = 10_000n;
 
       (publicClient.readContract as any)
         .mockResolvedValueOnce(true) // isRecoveryActive
         .mockResolvedValueOnce([
           ('0x' + 'aa'.repeat(32)) as Hex,
           '0x2222222222222222222222222222222222222222' as Address,
-          now + 3600n, // deadline
-          now - 1000n, // thresholdMetAt
+          chainNow + 3600n, // deadline
+          chainNow - 1000n, // thresholdMetAt
           2n, // approvalCount
         ])
         .mockResolvedValueOnce(2n) // threshold
         .mockResolvedValueOnce(600n); // challengePeriod
+      (publicClient.getBlock as any).mockResolvedValueOnce({ timestamp: chainNow });
 
       const client = new RecoveryClient({
         publicClient,

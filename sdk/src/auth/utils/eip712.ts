@@ -49,6 +49,14 @@ export interface CreateRecoveryIntentParams {
   deadlineSeconds?: number;
 }
 
+export interface IntentValidationOptions {
+  /**
+   * Optional current timestamp in seconds.
+   * If omitted, local system time is used.
+   */
+  nowSeconds?: bigint;
+}
+
 /**
  * Creates a RecoveryIntent with common defaults
  *
@@ -75,7 +83,7 @@ export function createRecoveryIntent(params: CreateRecoveryIntentParams): Recove
  * @param intent The intent to validate
  * @returns True if the intent is valid
  */
-export function isValidIntent(intent: RecoveryIntent): boolean {
+export function isValidIntent(intent: RecoveryIntent, options: IntentValidationOptions = {}): boolean {
   // Check addresses are not zero
   if (intent.wallet === '0x0000000000000000000000000000000000000000') {
     return false;
@@ -88,7 +96,7 @@ export function isValidIntent(intent: RecoveryIntent): boolean {
   }
 
   // Check deadline is in the future
-  const now = BigInt(Math.floor(Date.now() / 1000));
+  const now = options.nowSeconds ?? BigInt(Math.floor(Date.now() / 1000));
   if (intent.deadline <= now) {
     return false;
   }

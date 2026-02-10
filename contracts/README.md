@@ -23,6 +23,11 @@ cd contracts
 CHAIN="sepolia" RPC_URL="$SEPOLIA_RPC_URL" PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" ETHERSCAN_API_KEY="$ETHERSCAN_API_KEY" ./scripts/deploy.sh
 ```
 
+`PasskeyVerifier` depends on the P-256 verifier contract at the deterministic address
+`0xc2b78104907F722DABAc4C69f826a522B2754De4`. The deploy script now checks that
+bytecode exists there and fails fast if missing, with instructions to deploy it first
+via `lib/p256-verifier/script/deploy.sh`.
+
 ## Directory Structure
 
 ```

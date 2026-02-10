@@ -121,6 +121,16 @@ describe('PolicyBuilder', () => {
       }).toThrow('Wallet address is required');
     });
 
+    it('should throw if wallet is zero address', () => {
+      expect(() => {
+        new PolicyBuilder()
+          .setWallet('0x0000000000000000000000000000000000000000')
+          .addEoaGuardian(eoaAddress)
+          .setThreshold(1)
+          .build();
+      }).toThrow('Wallet address cannot be zero');
+    });
+
     it('should throw if no guardians', () => {
       expect(() => {
         new PolicyBuilder().setWallet(testWallet).setThreshold(1).build();
