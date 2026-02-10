@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 target/
+docs/book/
 
 # OS
 .DS_Store
