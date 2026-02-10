@@ -31,8 +31,3 @@
 - End-to-end flow tests
 - SDK ↔ Contract integration tests
 - Testnet deployment
-
-## Phase 5: Integration testing // Ambire Wallet Fork
-
-- Integration into an Ambire wallet fork
-- Full recovery flow testing
