@@ -9,6 +9,7 @@ src = "src"
 build-dir = "book"
 
 [output.html]
+site-url = "/social-recovery-sdk/"
 default-theme = "light"
 preferred-dark-theme = "navy"
 smart-punctuation = true
