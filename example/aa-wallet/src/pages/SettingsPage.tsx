@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { RecoveryPolicy } from '@pse/social-recovery-sdk';
+import { GuardianType, type RecoveryPolicy } from '@pse/social-recovery-sdk';
 import { anvil } from 'viem/chains';
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { DEMO_ACCOUNTS, getPublicClient, getWalletClient } from '../lib/chain';
 import { DEPLOYMENT, ExampleAAWalletAbi, bytes32ToAddress, isConfiguredAddress } from '../lib/contracts';
-import { buildEoaPolicy, normalizeGuardianAddresses, toGuardianTypeLabel, type GuardianKind } from '../lib/policy';
+import { buildGuardianPolicy, normalizeGuardianAddresses, toGuardianTypeLabel, type GuardianKind } from '../lib/policy';
+import { enrollPasskey, getDefaultRpId, listPasskeys, type PasskeyMaterial } from '../lib/passkeys';
 import { createRecoveryClient, lookupRecoveryManager } from '../lib/recovery';
 
 interface SettingsPageProps {
@@ -16,39 +17,215 @@ interface SettingsPageProps {
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const SETTINGS_STORAGE_KEY = 'aa-wallet-demo-settings-state-v1';
 
 interface GuardianDraft {
   id: string;
   type: GuardianKind;
   identifier: string;
+  passkeyId: string;
+}
+
+interface PersistedSettingsState {
+  selectedOwnerPrivateKey: Hex;
+  walletInput: string;
+  guardians: GuardianDraft[];
+  threshold: string;
+  challengePeriod: string;
+}
+
+const KNOWN_PRIVATE_KEYS = new Set<Hex>(DEMO_ACCOUNTS.map((account) => account.privateKey));
+
+function createGuardianDraftId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `guardian-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function createGuardianDraft(identifier = ''): GuardianDraft {
   return {
-    id: crypto.randomUUID(),
+    id: createGuardianDraftId(),
     type: 'eoa',
     identifier,
+    passkeyId: '',
   };
 }
 
+function defaultGuardianDrafts(): GuardianDraft[] {
+  return [createGuardianDraft(DEMO_ACCOUNTS[1].address), createGuardianDraft(DEMO_ACCOUNTS[2].address)];
+}
+
+function normalizePrivateKey(value: unknown, fallback: Hex): Hex {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  return KNOWN_PRIVATE_KEYS.has(value as Hex) ? (value as Hex) : fallback;
+}
+
+function normalizeGuardianDraft(value: unknown): GuardianDraft | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<GuardianDraft>;
+  if (
+    typeof candidate.id !== 'string' ||
+    (candidate.type !== 'eoa' && candidate.type !== 'passkey' && candidate.type !== 'zkjwt') ||
+    typeof candidate.identifier !== 'string' ||
+    typeof candidate.passkeyId !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    type: candidate.type,
+    identifier: candidate.identifier,
+    passkeyId: candidate.passkeyId,
+  };
+}
+
+function loadPersistedSettingsState(): PersistedSettingsState {
+  if (typeof window === 'undefined') {
+    return {
+      selectedOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+      walletInput: '',
+      guardians: defaultGuardianDrafts(),
+      threshold: '2',
+      challengePeriod: '600',
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return {
+        selectedOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+        walletInput: '',
+        guardians: defaultGuardianDrafts(),
+        threshold: '2',
+        challengePeriod: '600',
+      };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedSettingsState>;
+    const guardians = Array.isArray(parsed.guardians)
+      ? parsed.guardians
+          .map((entry) => normalizeGuardianDraft(entry))
+          .filter((entry): entry is GuardianDraft => entry !== null)
+      : [];
+
+    return {
+      selectedOwnerPrivateKey: normalizePrivateKey(parsed.selectedOwnerPrivateKey, DEMO_ACCOUNTS[0].privateKey),
+      walletInput: typeof parsed.walletInput === 'string' ? parsed.walletInput : '',
+      guardians: guardians.length > 0 ? guardians : defaultGuardianDrafts(),
+      threshold: typeof parsed.threshold === 'string' && parsed.threshold.length > 0 ? parsed.threshold : '2',
+      challengePeriod:
+        typeof parsed.challengePeriod === 'string' && parsed.challengePeriod.length > 0 ? parsed.challengePeriod : '600',
+    };
+  } catch {
+    return {
+      selectedOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+      walletInput: '',
+      guardians: defaultGuardianDrafts(),
+      threshold: '2',
+      challengePeriod: '600',
+    };
+  }
+}
+
+function formatSettingsError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const message = error.message || fallback;
+  if (message.includes('WebAuthn is not supported')) {
+    return 'WebAuthn is not available in this browser/environment.';
+  }
+  if (message.includes('Failed to create passkey credential')) {
+    return 'Passkey enrollment failed. Make sure browser passkeys are enabled.';
+  }
+  if (
+    message.includes('The operation either timed out or was not allowed') ||
+    message.includes('NotAllowedError')
+  ) {
+    return 'Passkey enrollment was cancelled or timed out.';
+  }
+
+  const firstLine = message.split('\n')[0].trim();
+  if (firstLine.length === 0) {
+    return fallback;
+  }
+  return firstLine.length > 220 ? `${firstLine.slice(0, 220)}...` : firstLine;
+}
+
+function shortHex(value: string): string {
+  if (value.length <= 12) {
+    return value;
+  }
+  return `${value.slice(0, 10)}...${value.slice(-6)}`;
+}
+
 export function SettingsPage(props: SettingsPageProps) {
-  const [selectedOwnerPrivateKey, setSelectedOwnerPrivateKey] = useState<Hex>(DEMO_ACCOUNTS[0].privateKey);
-  const [walletInput, setWalletInput] = useState<string>(props.walletAddress || '');
-  const [guardians, setGuardians] = useState<GuardianDraft[]>([
-    createGuardianDraft(DEMO_ACCOUNTS[1].address),
-    createGuardianDraft(DEMO_ACCOUNTS[2].address),
-  ]);
-  const [threshold, setThreshold] = useState<string>('2');
-  const [challengePeriod, setChallengePeriod] = useState<string>('600');
+  const initialState = useMemo(() => loadPersistedSettingsState(), []);
+  const [selectedOwnerPrivateKey, setSelectedOwnerPrivateKey] = useState<Hex>(initialState.selectedOwnerPrivateKey);
+  const [walletInput, setWalletInput] = useState<string>(props.walletAddress || initialState.walletInput);
+  const [guardians, setGuardians] = useState<GuardianDraft[]>(initialState.guardians);
+  const [threshold, setThreshold] = useState<string>(initialState.threshold);
+  const [challengePeriod, setChallengePeriod] = useState<string>(initialState.challengePeriod);
   const [status, setStatus] = useState<string>('Load wallet and configure policy');
   const [error, setError] = useState<string>('');
   const [walletOwner, setWalletOwner] = useState<Address | ''>('');
   const [currentPolicy, setCurrentPolicy] = useState<RecoveryPolicy | null>(null);
+  const [passkeys, setPasskeys] = useState<PasskeyMaterial[]>(() => listPasskeys());
 
   const publicClient = useMemo(() => getPublicClient(), []);
   const ownerWalletClient = useMemo(() => getWalletClient(selectedOwnerPrivateKey), [selectedOwnerPrivateKey]);
   const signerAddress = ownerWalletClient.account?.address;
   const signerIsOwner = Boolean(signerAddress && walletOwner && signerAddress.toLowerCase() === walletOwner.toLowerCase());
+  const passkeyById = useMemo(() => new Map(passkeys.map((passkey) => [passkey.id, passkey])), [passkeys]);
+  const passkeyByIdentifier = useMemo(
+    () => new Map(passkeys.map((passkey) => [passkey.identifier.toLowerCase(), passkey])),
+    [passkeys],
+  );
+
+  function mapPolicyToGuardianDrafts(policy: RecoveryPolicy): GuardianDraft[] {
+    const next = policy.guardians.map((guardian) => {
+      if (guardian.guardianType === GuardianType.EOA) {
+        return createGuardianDraft(bytes32ToAddress(guardian.identifier));
+      }
+
+      if (guardian.guardianType === GuardianType.Passkey) {
+        const localPasskey = passkeyByIdentifier.get(guardian.identifier.toLowerCase());
+        return {
+          id: createGuardianDraftId(),
+          type: 'passkey' as const,
+          identifier: guardian.identifier,
+          passkeyId: localPasskey?.id ?? '',
+        };
+      }
+
+      return {
+        id: createGuardianDraftId(),
+        type: 'zkjwt' as const,
+        identifier: guardian.identifier,
+        passkeyId: '',
+      };
+    });
+
+    return next.length > 0 ? next : defaultGuardianDrafts();
+  }
+
+  function applyPolicyToForm(policy: RecoveryPolicy) {
+    setGuardians(mapPolicyToGuardianDrafts(policy));
+    setThreshold(policy.threshold.toString());
+    setChallengePeriod(policy.challengePeriod.toString());
+  }
+
+  function syncPasskeys() {
+    setPasskeys(listPasskeys());
+  }
 
   function resolveWalletAddress(): Address {
     if (props.walletAddress) {
@@ -80,6 +257,50 @@ export function SettingsPage(props: SettingsPageProps) {
     );
   }
 
+  function updateGuardianType(guardianId: string, nextType: GuardianKind) {
+    const defaultPasskey = passkeys[0];
+    setGuardians((prev) =>
+      prev.map((guardian) => {
+        if (guardian.id !== guardianId) {
+          return guardian;
+        }
+
+        if (nextType === 'passkey') {
+          return {
+            ...guardian,
+            type: nextType,
+            passkeyId: defaultPasskey?.id ?? '',
+            identifier: defaultPasskey?.identifier ?? '',
+          };
+        }
+
+        if (nextType === 'zkjwt') {
+          return {
+            ...guardian,
+            type: nextType,
+            passkeyId: '',
+            identifier: '',
+          };
+        }
+
+        return {
+          ...guardian,
+          type: nextType,
+          passkeyId: '',
+          identifier: guardian.type === 'eoa' ? guardian.identifier : '',
+        };
+      }),
+    );
+  }
+
+  function updateGuardianPasskey(guardianId: string, passkeyId: string) {
+    const selected = passkeyById.get(passkeyId);
+    updateGuardian(guardianId, {
+      passkeyId,
+      identifier: selected?.identifier ?? '',
+    });
+  }
+
   function removeGuardian(guardianId: string) {
     setGuardians((prev) => {
       const next = prev.filter((guardian) => guardian.id !== guardianId);
@@ -88,23 +309,39 @@ export function SettingsPage(props: SettingsPageProps) {
   }
 
   function parsePolicyInput(walletAddress: Address) {
-    const supportedGuardians = guardians.filter((guardian) => guardian.type === 'eoa');
-    const unsupportedGuardians = guardians.filter((guardian) => guardian.type !== 'eoa' && guardian.identifier.trim());
+    const normalizedEoaGuardians = normalizeGuardianAddresses(
+      guardians.filter((guardian) => guardian.type === 'eoa').map((guardian) => guardian.identifier),
+    );
+
+    const configuredPasskeyGuardians = guardians
+      .filter((guardian) => guardian.type === 'passkey')
+      .map((guardian) => {
+        if (!guardian.passkeyId) {
+          throw new Error('Select a local passkey for each Passkey guardian row.');
+        }
+        const selectedPasskey = passkeyById.get(guardian.passkeyId);
+        if (!selectedPasskey) {
+          throw new Error('Selected passkey was not found in local storage. Re-enroll or refresh passkeys.');
+        }
+        return selectedPasskey;
+      });
+
+    const unsupportedGuardians = guardians.filter((guardian) => guardian.type === 'zkjwt' && guardian.identifier.trim());
     if (unsupportedGuardians.length > 0) {
-      throw new Error('Passkey and ZK JWT guardians will be enabled in later phases. Use EOA guardians for now.');
+      throw new Error('ZK JWT guardians will be enabled in Phase 3.');
     }
 
-    const guardianAddresses = normalizeGuardianAddresses(supportedGuardians.map((guardian) => guardian.identifier));
-    if (guardianAddresses.length === 0) {
-      throw new Error('At least one guardian address is required');
+    const totalGuardians = normalizedEoaGuardians.length + configuredPasskeyGuardians.length;
+    if (totalGuardians === 0) {
+      throw new Error('At least one guardian is required');
     }
 
     const thresholdValue = BigInt(threshold);
     if (thresholdValue <= 0n) {
       throw new Error('Threshold must be greater than zero');
     }
-    if (thresholdValue > BigInt(guardianAddresses.length)) {
-      throw new Error('Threshold cannot exceed the number of EOA guardians');
+    if (thresholdValue > BigInt(totalGuardians)) {
+      throw new Error('Threshold cannot exceed the number of configured guardians');
     }
 
     const challengePeriodValue = BigInt(challengePeriod);
@@ -112,9 +349,15 @@ export function SettingsPage(props: SettingsPageProps) {
       throw new Error('Challenge period cannot be negative');
     }
 
-    return buildEoaPolicy({
+    return buildGuardianPolicy({
       wallet: walletAddress,
-      guardians: guardianAddresses,
+      guardians: [
+        ...normalizedEoaGuardians.map((address) => ({ type: 'eoa' as const, address })),
+        ...configuredPasskeyGuardians.map((passkey) => ({
+          type: 'passkey' as const,
+          passkeyPublicKey: passkey.publicKey,
+        })),
+      ],
       threshold: thresholdValue,
       challengePeriod: challengePeriodValue,
     });
@@ -139,6 +382,7 @@ export function SettingsPage(props: SettingsPageProps) {
     });
     const policy = await client.getPolicy();
     setCurrentPolicy(policy);
+    applyPolicyToForm(policy);
     setStatus('Loaded wallet and recovery policy');
   }
 
@@ -149,7 +393,28 @@ export function SettingsPage(props: SettingsPageProps) {
       props.setWalletAddress(walletAddress);
       await refreshRecoveryConfiguration(walletAddress);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load wallet');
+      setError(formatSettingsError(loadError, 'Failed to load wallet'));
+    }
+  }
+
+  async function handleEnrollPasskey(guardianId: string) {
+    setError('');
+    try {
+      setStatus('Opening passkey enrollment prompt...');
+      const created = await enrollPasskey({
+        rpId: getDefaultRpId(),
+      });
+      syncPasskeys();
+      updateGuardian(guardianId, { passkeyId: created.id, identifier: created.identifier });
+
+      props.addActivity({
+        label: 'Passkey enrolled',
+        details: `${created.label} (${shortHex(created.identifier)})`,
+      });
+      setStatus('Passkey enrolled');
+    } catch (enrollError) {
+      setError(formatSettingsError(enrollError, 'Passkey enrollment failed'));
+      setStatus('Passkey enrollment failed');
     }
   }
 
@@ -188,7 +453,7 @@ export function SettingsPage(props: SettingsPageProps) {
       props.addActivity({ label: 'Recovery manager deployed', details: recoveryManagerAddress });
       setStatus('Recovery manager deployed');
     } catch (deployError) {
-      setError(deployError instanceof Error ? deployError.message : 'Recovery manager deployment failed');
+      setError(formatSettingsError(deployError, 'Recovery manager deployment failed'));
       setStatus('Deploy failed');
     }
   }
@@ -226,7 +491,7 @@ export function SettingsPage(props: SettingsPageProps) {
       });
       setStatus('Recovery manager authorized');
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Authorization failed');
+      setError(formatSettingsError(authError, 'Authorization failed'));
       setStatus('Authorize failed');
     }
   }
@@ -267,10 +532,25 @@ export function SettingsPage(props: SettingsPageProps) {
       await refreshRecoveryConfiguration(walletAddress);
       setStatus('Policy updated');
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : 'Failed to update policy');
+      setError(formatSettingsError(updateError, 'Failed to update policy'));
       setStatus('Update failed');
     }
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const nextState: PersistedSettingsState = {
+      selectedOwnerPrivateKey,
+      walletInput,
+      guardians,
+      threshold,
+      challengePeriod,
+    };
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextState));
+  }, [challengePeriod, guardians, selectedOwnerPrivateKey, threshold, walletInput]);
 
   useEffect(() => {
     if (props.walletAddress) {
@@ -278,6 +558,44 @@ export function SettingsPage(props: SettingsPageProps) {
       void refreshRecoveryConfiguration(props.walletAddress);
     }
   }, [props.walletAddress]);
+
+  useEffect(() => {
+    setGuardians((prev) => {
+      let changed = false;
+      const next = prev.map((guardian) => {
+        if (guardian.type !== 'passkey' || !guardian.identifier) {
+          return guardian;
+        }
+
+        const match = passkeyByIdentifier.get(guardian.identifier.toLowerCase());
+        const resolvedPasskeyId = match?.id ?? '';
+        if (guardian.passkeyId === resolvedPasskeyId) {
+          return guardian;
+        }
+
+        changed = true;
+        return {
+          ...guardian,
+          passkeyId: resolvedPasskeyId,
+        };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [passkeyByIdentifier]);
+
+  useEffect(() => {
+    syncPasskeys();
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === null || event.key === 'aa-wallet-demo-passkeys-v1') {
+        syncPasskeys();
+      }
+    }
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   return (
     <section className="panel-grid two-col">
@@ -303,7 +621,12 @@ export function SettingsPage(props: SettingsPageProps) {
           <span>2. Wallet address</span>
           <div className="row gap-sm">
             <input value={walletInput} onChange={(event) => setWalletInput(event.target.value)} placeholder="0x..." />
-            <button type="button" className="secondary" onClick={handleLoadWallet} title="Load this wallet and fetch owner + recovery manager info">
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleLoadWallet}
+              title="Load this wallet and fetch owner + recovery manager info"
+            >
               Load
             </button>
           </div>
@@ -330,42 +653,86 @@ export function SettingsPage(props: SettingsPageProps) {
 
         <div className="subpanel">
           <h3>3. Guardians</h3>
-          <p className="muted">Add guardians with a type selector. Phase 1 currently supports EOA only.</p>
           <ul className="guardian-builder-list">
             {guardians.map((guardian, index) => (
               <li key={guardian.id} className="guardian-builder-row">
-                <span className="guardian-chip">Guardian {index + 1}</span>
-                <input
-                  value={guardian.identifier}
-                  onChange={(event) => updateGuardian(guardian.id, { identifier: event.target.value })}
-                  placeholder={guardian.type === 'eoa' ? '0x...' : 'Identifier'}
-                />
-                <select
-                  value={guardian.type}
-                  onChange={(event) => updateGuardian(guardian.id, { type: event.target.value as GuardianKind })}
-                >
-                  <option value="eoa">EOA</option>
-                  <option value="passkey" disabled>
-                    Passkey (Phase 2)
-                  </option>
-                  <option value="zkjwt" disabled>
-                    ZK JWT (Phase 3)
-                  </option>
-                </select>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => removeGuardian(guardian.id)}
-                  title="Remove this guardian row"
-                >
-                  Remove
-                </button>
+                <div className="guardian-builder-head">
+                  <span className="guardian-chip">Guardian {index + 1}</span>
+                  <div className="row gap-sm">
+                    <select
+                      value={guardian.type}
+                      onChange={(event) => updateGuardianType(guardian.id, event.target.value as GuardianKind)}
+                    >
+                      <option value="eoa">EOA</option>
+                      <option value="passkey">Passkey</option>
+                      <option value="zkjwt" disabled>
+                        ZK JWT (Phase 3)
+                      </option>
+                    </select>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => removeGuardian(guardian.id)}
+                      title="Remove this guardian row"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                <div className="guardian-builder-input">
+                  {guardian.type === 'eoa' ? (
+                    <input
+                      value={guardian.identifier}
+                      onChange={(event) => updateGuardian(guardian.id, { identifier: event.target.value })}
+                      placeholder="0x..."
+                    />
+                  ) : null}
+
+                  {guardian.type === 'passkey' ? (
+                    <div className="guardian-passkey-row">
+                      <select
+                        value={guardian.passkeyId}
+                        onChange={(event) => updateGuardianPasskey(guardian.id, event.target.value)}
+                      >
+                        <option value="">Select local passkey</option>
+                        {passkeys.map((passkey) => (
+                          <option key={passkey.id} value={passkey.id}>
+                            {passkey.label} ({shortHex(passkey.identifier)})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void handleEnrollPasskey(guardian.id)}
+                        title="Enroll a new passkey and assign it to this row"
+                      >
+                        Enroll
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {guardian.type === 'zkjwt' ? (
+                    <input
+                      value={guardian.identifier}
+                      onChange={(event) => updateGuardian(guardian.id, { identifier: event.target.value })}
+                      placeholder="ZK JWT commitment (Phase 3)"
+                      disabled
+                    />
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
-          <button type="button" className="secondary" onClick={addGuardian} title="Add another guardian row">
-            + Add guardian
-          </button>
+          <div className="actions centered">
+            <button type="button" className="secondary" onClick={addGuardian} title="Add another guardian row">
+              Add guardian
+            </button>
+            <button type="button" className="secondary" onClick={syncPasskeys} title="Reload local passkeys">
+              Refresh passkeys
+            </button>
+          </div>
         </div>
 
         <div className="row gap-sm">
@@ -437,16 +804,25 @@ export function SettingsPage(props: SettingsPageProps) {
             </div>
 
             <ul className="guardian-list">
-              {currentPolicy.guardians.map((guardian, index) => (
-                <li key={`${guardian.identifier}-${index}`}>
-                  <span>
-                    Guardian #{index} ({toGuardianTypeLabel(guardian.guardianType)})
-                  </span>
-                  <code>
-                    {guardian.guardianType === 0 ? bytes32ToAddress(guardian.identifier) : guardian.identifier}
-                  </code>
-                </li>
-              ))}
+              {currentPolicy.guardians.map((guardian, index) => {
+                const localPasskey =
+                  guardian.guardianType === GuardianType.Passkey
+                    ? passkeyByIdentifier.get(guardian.identifier.toLowerCase())
+                    : null;
+                return (
+                  <li key={`${guardian.identifier}-${index}`}>
+                    <span>
+                      Guardian #{index} ({toGuardianTypeLabel(guardian.guardianType)})
+                    </span>
+                    <code>
+                      {guardian.guardianType === GuardianType.EOA
+                        ? bytes32ToAddress(guardian.identifier)
+                        : guardian.identifier}
+                    </code>
+                    {localPasskey ? <span className="muted">Local passkey: {localPasskey.label}</span> : null}
+                  </li>
+                );
+              })}
             </ul>
           </>
         ) : null}

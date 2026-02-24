@@ -103,4 +103,13 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 - Demo-focused UX improvements (state persistence, chain time controls, guardian/session visibility)
 
 **Notes:**
-- Example Phase 2 (passkey flow in app UI) and Phase 3 (zkJWT flow in app UI) remain pending.
+- Example Phase 3 (zkJWT flow in app UI) remains pending.
+
+### Phase 2: Passkey Recovery in Example App ✅
+
+**Implemented under `example/aa-wallet`:**
+- Local passkey enrollment (WebAuthn) with browser storage for demo credentials
+- Settings support for mixed guardian policy updates (`EOA` + `Passkey`)
+- Recovery flow support for passkey guardian proofs via `PasskeyAdapter`
+- Passkey guardian state visibility in recovery configuration/session UI
+- Updated app copy and runbook status for Phase 2 completion

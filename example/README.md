@@ -10,7 +10,7 @@ It contains:
 ## Phase Status
 
 1. Phase 1 (Wallet + EOA recovery): ✅ completed
-2. Phase 2 (Passkey in app flow): pending
+2. Phase 2 (Passkey in app flow): ✅ completed
 3. Phase 3 (zkJWT in app flow): pending
 
 ## How it works (high level)
@@ -23,6 +23,12 @@ It contains:
 Current implemented guardian flow:
 
 1. EOA guardians
+2. Passkey guardians (WebAuthn)
+
+Passkey note:
+
+1. Passkeys are enrolled locally in your browser and stored in browser local storage for this demo app.
+2. To submit passkey proofs, use the same browser/device where the passkey guardian was enrolled.
 
 ## Prerequisites
 
@@ -30,6 +36,7 @@ Current implemented guardian flow:
 2. npm
 3. Foundry (`forge`, `anvil`)
 4. `jq` and `cast`
+5. Browser with WebAuthn/passkey support (Chrome/Safari/Edge recent versions)
 
 ## Run locally (Anvil)
 

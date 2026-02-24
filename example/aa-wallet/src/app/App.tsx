@@ -135,7 +135,7 @@ export function App() {
       <header className="header">
         <div>
           <h1>Social Recovery AA Wallet</h1>
-          <p>Standalone demo: wallet deployment, recovery setup, and EOA guardian recovery on Anvil</p>
+          <p>Standalone demo: wallet deployment, recovery setup, and recovery execution on Anvil</p>
         </div>
         <nav className="tabs" aria-label="Main tabs">
           {TAB_ROUTES.map((route) => (
@@ -158,7 +158,6 @@ export function App() {
             1. Deploy wallet in <strong>Wallet</strong>. 2. Configure guardians and recovery manager in{' '}
             <strong>Settings</strong>. 3. Recover by pasted wallet address in <strong>Recover</strong>.
           </p>
-          <p className="muted">This demo keeps active wallet and recent activity in browser storage between refreshes.</p>
         </section>
         {activeTab === 'wallet' && <WalletPage {...commonProps} />}
         {activeTab === 'settings' && <SettingsPage {...commonProps} />}

@@ -1,11 +1,17 @@
-import { GuardianType, PolicyBuilder } from '@pse/social-recovery-sdk';
+import { GuardianType, PolicyBuilder, type P256PublicKey } from '@pse/social-recovery-sdk';
 import { getAddress, type Address } from 'viem';
 
 export type GuardianKind = 'eoa' | 'passkey' | 'zkjwt';
 
-export interface EoaPolicyInput {
+export interface GuardianPolicyEntry {
+  type: GuardianKind;
+  address?: string;
+  passkeyPublicKey?: P256PublicKey;
+}
+
+export interface GuardianPolicyInput {
   wallet: Address;
-  guardians: Address[];
+  guardians: GuardianPolicyEntry[];
   threshold: bigint;
   challengePeriod: bigint;
 }
@@ -41,14 +47,27 @@ export function toGuardianTypeLabel(guardianType: number): string {
   return `Unknown (${guardianType})`;
 }
 
-export function buildEoaPolicy(input: EoaPolicyInput) {
+export function buildGuardianPolicy(input: GuardianPolicyInput) {
   const builder = new PolicyBuilder()
     .setWallet(input.wallet)
     .setThreshold(input.threshold)
     .setChallengePeriod(input.challengePeriod);
 
   for (const guardian of input.guardians) {
-    builder.addEoaGuardian(guardian);
+    if (guardian.type === 'eoa') {
+      if (!guardian.address || !guardian.address.trim()) {
+        continue;
+      }
+      builder.addEoaGuardian(getAddress(guardian.address));
+      continue;
+    }
+
+    if (guardian.type === 'passkey') {
+      if (!guardian.passkeyPublicKey) {
+        continue;
+      }
+      builder.addPasskeyGuardian(guardian.passkeyPublicKey);
+    }
   }
 
   return builder.build();

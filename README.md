@@ -29,7 +29,7 @@ cd sdk && npm run test:e2e
 # Circuits
 cd circuits/zkjwt && nargo build && nargo test
 
-# Standalone example app (Phase 1: EOA recovery)
+# Standalone example app (Phase 2: EOA + Passkey recovery)
 cd example/aa-wallet && npm install && npm run local:up
 ```
 
@@ -46,4 +46,4 @@ See [docs/](./docs/README.md) for detailed documentation, [SPEC.md](./SPEC.md) f
 Example app docs:
 
 - [example/README.md](./example/README.md) - standalone demo runbook
-- [example/example-spec.md](./example/example-spec.md) - phased delivery spec (Phase 1 implemented)
+- [example/example-spec.md](./example/example-spec.md) - phased delivery spec (Phase 1 + 2 implemented)

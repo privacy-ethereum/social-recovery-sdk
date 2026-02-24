@@ -4,8 +4,15 @@ import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { DEMO_ACCOUNTS, getPublicClient, getWalletClient, increaseAnvilTime, shortAddress } from '../lib/chain';
 import { ExampleAAWalletAbi, RecoveryManagerViewAbi, bytes32ToAddress } from '../lib/contracts';
 import { buildIntent } from '../lib/intents';
+import { listPasskeys, type PasskeyMaterial } from '../lib/passkeys';
 import { toGuardianTypeLabel } from '../lib/policy';
-import { createEoaAdapter, createRecoveryClient, loadRecoverySnapshot, type RecoverySnapshot } from '../lib/recovery';
+import {
+  createEoaAdapter,
+  createPasskeyAdapter,
+  createRecoveryClient,
+  loadRecoverySnapshot,
+  type RecoverySnapshot,
+} from '../lib/recovery';
 
 interface RecoverPageProps {
   walletAddress: Address | '';
@@ -142,12 +149,31 @@ function formatRecoverError(error: unknown, fallback: string): string {
   if (message.includes('RecoveryNotActive')) {
     return 'No active recovery session for this wallet.';
   }
+  if (message.includes('Guardian identifier does not match adapter public key')) {
+    return 'Selected passkey does not match the guardian configured on-chain.';
+  }
+  if (message.includes('WebAuthn is not supported')) {
+    return 'WebAuthn is not available in this browser/environment.';
+  }
+  if (
+    message.includes('The operation either timed out or was not allowed') ||
+    message.includes('NotAllowedError')
+  ) {
+    return 'Passkey prompt was cancelled or timed out.';
+  }
 
   const firstLine = message.split('\n')[0].trim();
   if (firstLine.length === 0) {
     return fallback;
   }
   return firstLine.length > 220 ? `${firstLine.slice(0, 220)}...` : firstLine;
+}
+
+function shortHex(value: string): string {
+  if (value.length <= 12) {
+    return value;
+  }
+  return `${value.slice(0, 10)}...${value.slice(-6)}`;
 }
 
 export function RecoverPage(props: RecoverPageProps) {
@@ -170,10 +196,19 @@ export function RecoverPage(props: RecoverPageProps) {
   const [latestBlockTimestamp, setLatestBlockTimestamp] = useState<bigint>(0n);
   const [timeStatus, setTimeStatus] = useState<string>('');
   const [timeError, setTimeError] = useState<string>('');
+  const [localPasskeys, setLocalPasskeys] = useState<PasskeyMaterial[]>(() => listPasskeys());
 
   const publicClient = useMemo(() => getPublicClient(), []);
   const selectedGuardian = snapshot?.policy.guardians[selectedGuardianIndex];
   const activeSession = Boolean(snapshot?.isActive);
+  const passkeysByIdentifier = useMemo(
+    () => new Map(localPasskeys.map((passkey) => [passkey.identifier.toLowerCase(), passkey])),
+    [localPasskeys],
+  );
+  const selectedPasskey =
+    selectedGuardian?.guardianType === GuardianType.Passkey
+      ? passkeysByIdentifier.get(selectedGuardian.identifier.toLowerCase()) ?? null
+      : null;
 
   const secondsUntilDeadline =
     snapshot && latestBlockTimestamp > 0n && snapshot.session.deadline > latestBlockTimestamp
@@ -186,6 +221,9 @@ export function RecoverPage(props: RecoverPageProps) {
   const secondsUntilChallengeReady =
     challengeReadyAt > 0n && challengeReadyAt > latestBlockTimestamp ? challengeReadyAt - latestBlockTimestamp : 0n;
   const selectedGuardianAlreadyApproved = Boolean(activeSession && guardianApprovals[selectedGuardianIndex]);
+  const selectedGuardianMissingLocalCredential = Boolean(
+    selectedGuardian?.guardianType === GuardianType.Passkey && !selectedPasskey,
+  );
 
   async function refreshChainClock() {
     const block = await publicClient.getBlock({ blockTag: 'latest' });
@@ -275,29 +313,30 @@ export function RecoverPage(props: RecoverPageProps) {
     await lookupWallet(getAddress(targetWalletInput));
   }
 
-  async function resolveIntent(walletAddress: Address): Promise<RecoveryIntent> {
-    if (!snapshot) {
+  async function resolveIntent(walletAddress: Address, sourceSnapshot?: RecoverySnapshot): Promise<RecoveryIntent> {
+    const resolvedSnapshot = sourceSnapshot ?? snapshot;
+    if (!resolvedSnapshot) {
       throw new Error('Recovery manager not loaded');
     }
 
     const chainId = BigInt(await publicClient.getChainId());
     const readClient = createRecoveryClient({
       publicClient,
-      recoveryManagerAddress: snapshot.recoveryManager,
+      recoveryManagerAddress: resolvedSnapshot.recoveryManager,
     });
     const nonce = await readClient.getNonce();
 
-    if (snapshot.isActive) {
+    if (resolvedSnapshot.isActive) {
       if (activeIntent) {
         return activeIntent;
       }
       return {
         wallet: walletAddress,
-        newOwner: snapshot.session.newOwner,
+        newOwner: resolvedSnapshot.session.newOwner,
         nonce,
-        deadline: snapshot.session.deadline,
+        deadline: resolvedSnapshot.session.deadline,
         chainId,
-        recoveryManager: snapshot.recoveryManager,
+        recoveryManager: resolvedSnapshot.recoveryManager,
       };
     }
 
@@ -309,15 +348,17 @@ export function RecoverPage(props: RecoverPageProps) {
     if (!Number.isInteger(deadlineSecondsValue) || deadlineSecondsValue <= 0) {
       throw new Error('Deadline seconds must be a positive integer');
     }
+    const latestBlock = await publicClient.getBlock({ blockTag: 'latest' });
 
     return buildIntent({
       wallet: walletAddress,
       newOwner: getAddress(newOwnerInput),
-      recoveryManager: snapshot.recoveryManager,
+      recoveryManager: resolvedSnapshot.recoveryManager,
       nonce,
       chainId,
-      challengePeriodSeconds: snapshot.policy.challengePeriod,
+      challengePeriodSeconds: resolvedSnapshot.policy.challengePeriod,
       deadlineSeconds: deadlineSecondsValue,
+      nowSeconds: latestBlock.timestamp,
     });
   }
 
@@ -346,6 +387,93 @@ export function RecoverPage(props: RecoverPageProps) {
     }
   }
 
+  function refreshLocalPasskeyState() {
+    setLocalPasskeys(listPasskeys());
+  }
+
+  async function generateSelectedGuardianProof(intent: RecoveryIntent) {
+    if (!selectedGuardian) {
+      throw new Error('Select a guardian');
+    }
+
+    const guardianIndex = BigInt(selectedGuardianIndex);
+    if (selectedGuardian.guardianType === GuardianType.EOA) {
+      const guardianWalletClient = getWalletClient(guardianPrivateKey);
+      const adapter = createEoaAdapter(guardianWalletClient);
+      const proofResult = await adapter.generateProof(intent, selectedGuardian.identifier);
+      if (!proofResult.success || !proofResult.proof) {
+        throw new Error(proofResult.error || 'Could not generate guardian proof');
+      }
+
+      return {
+        guardianIndex,
+        proof: proofResult.proof,
+        submitterWalletClient: guardianWalletClient,
+        guardianDescription: `Guardian #${selectedGuardianIndex} (EOA)`,
+      };
+    }
+
+    if (selectedGuardian.guardianType === GuardianType.Passkey) {
+      const currentPasskey = passkeysByIdentifier.get(selectedGuardian.identifier.toLowerCase());
+      if (!currentPasskey) {
+        throw new Error(
+          'Selected passkey guardian is not available in this browser. Use the browser/device where that passkey was enrolled.',
+        );
+      }
+
+      const adapter = createPasskeyAdapter({
+        rpId: currentPasskey.rpId,
+        credentialId: currentPasskey.credentialId,
+        publicKey: currentPasskey.publicKey,
+      });
+      const proofResult = await adapter.generateProof(intent, selectedGuardian.identifier);
+      if (!proofResult.success || !proofResult.proof) {
+        throw new Error(proofResult.error || 'Could not generate passkey proof');
+      }
+
+      return {
+        guardianIndex,
+        proof: proofResult.proof,
+        submitterWalletClient: getWalletClient(executorPrivateKey),
+        guardianDescription: `Guardian #${selectedGuardianIndex} (Passkey)`,
+      };
+    }
+
+    throw new Error('Selected guardian type is not supported yet.');
+  }
+
+  async function clearExpiredRecoveryForWallet(walletAddress: Address): Promise<boolean> {
+    const latestSnapshot = await loadRecoverySnapshot({
+      publicClient,
+      walletAddress,
+    });
+
+    if (!latestSnapshot || !latestSnapshot.isActive || latestSnapshot.status !== 'expired') {
+      return false;
+    }
+
+    const helperWalletClient = getWalletClient(executorPrivateKey);
+    const helperClient = createRecoveryClient({
+      publicClient,
+      walletClient: helperWalletClient,
+      recoveryManagerAddress: latestSnapshot.recoveryManager,
+    });
+
+    setStatus('Clearing expired recovery...');
+    const hash = await helperClient.clearExpiredRecovery();
+    await publicClient.waitForTransactionReceipt({ hash });
+    props.addActivity({
+      label: 'Expired recovery cleared',
+      txHash: hash,
+      details: `Wallet ${shortAddress(walletAddress)}`,
+    });
+
+    setActiveIntent(null);
+    await lookupWallet(walletAddress, true);
+    setStatus('Expired recovery cleared. No active recovery session now.');
+    return true;
+  }
+
   async function handleStartRecovery() {
     setError('');
     if (!snapshot) {
@@ -360,43 +488,52 @@ export function RecoverPage(props: RecoverPageProps) {
       setError('Select a guardian');
       return;
     }
-    if (selectedGuardian.guardianType !== GuardianType.EOA) {
-      setError('This demo currently supports EOA guardians only');
-      return;
-    }
-    if (snapshot.isActive) {
-      setError('Recovery already active. Use active session actions instead.');
+    if (selectedGuardianMissingLocalCredential) {
+      setError('Selected passkey guardian is not available in this browser.');
       return;
     }
 
     try {
       const walletAddress = getAddress(targetWalletInput);
-      const guardianIndex = BigInt(selectedGuardianIndex);
-      const guardianWalletClient = getWalletClient(guardianPrivateKey);
-      const adapter = createEoaAdapter(guardianWalletClient);
-      const intent = await resolveIntent(walletAddress);
-      const proofResult = await adapter.generateProof(intent, selectedGuardian.identifier);
-      if (!proofResult.success || !proofResult.proof) {
-        throw new Error(proofResult.error || 'Could not generate guardian proof');
+      if (snapshot.isActive && snapshot.status === 'expired') {
+        await clearExpiredRecoveryForWallet(walletAddress);
       }
+
+      const latestSnapshot = await loadRecoverySnapshot({
+        publicClient,
+        walletAddress,
+      });
+      if (!latestSnapshot) {
+        throw new Error('Recovery is not configured for this wallet.');
+      }
+      if (latestSnapshot.isActive) {
+        throw new Error('Recovery already active. Use active session actions instead.');
+      }
+
+      const intent = await resolveIntent(walletAddress, latestSnapshot);
+      const proofPayload = await generateSelectedGuardianProof(intent);
 
       const guardianClient = createRecoveryClient({
         publicClient,
-        walletClient: guardianWalletClient,
-        recoveryManagerAddress: snapshot.recoveryManager,
+        walletClient: proofPayload.submitterWalletClient,
+        recoveryManagerAddress: latestSnapshot.recoveryManager,
       });
 
-      setStatus('Submitting first guardian proof...');
+      setStatus(
+        selectedGuardian.guardianType === GuardianType.Passkey
+          ? 'Waiting for passkey approval...'
+          : 'Submitting first guardian proof...',
+      );
       const hash = await guardianClient.startRecovery({
         intent,
-        guardianIndex,
-        proof: proofResult.proof,
+        guardianIndex: proofPayload.guardianIndex,
+        proof: proofPayload.proof,
       });
       await publicClient.waitForTransactionReceipt({ hash });
       props.addActivity({
         label: 'Recovery started',
         txHash: hash,
-        details: `Guardian #${selectedGuardianIndex}`,
+        details: proofPayload.guardianDescription,
       });
 
       setActiveIntent(intent);
@@ -422,42 +559,54 @@ export function RecoverPage(props: RecoverPageProps) {
       setError('Select a guardian');
       return;
     }
-    if (selectedGuardian.guardianType !== GuardianType.EOA) {
-      setError('This demo currently supports EOA guardians only');
+    if (snapshot.status === 'expired') {
+      try {
+        const walletAddress = getAddress(targetWalletInput);
+        const cleared = await clearExpiredRecoveryForWallet(walletAddress);
+        if (cleared) {
+          setError('Expired session was cleared. Start a new recovery attempt.');
+        } else {
+          setError('Recovery session is expired. Start a new recovery attempt.');
+        }
+      } catch (clearError) {
+        setError(formatRecoverError(clearError, 'Failed to clear expired recovery session'));
+      }
       return;
     }
     if (selectedGuardianAlreadyApproved) {
       setError('This guardian already approved the active recovery session. Choose another guardian.');
       return;
     }
+    if (selectedGuardianMissingLocalCredential) {
+      setError('Selected passkey guardian is not available in this browser.');
+      return;
+    }
 
     try {
       const walletAddress = getAddress(targetWalletInput);
-      const guardianIndex = BigInt(selectedGuardianIndex);
-      const guardianWalletClient = getWalletClient(guardianPrivateKey);
-      const adapter = createEoaAdapter(guardianWalletClient);
       const intent = await resolveIntent(walletAddress);
-      const proofResult = await adapter.generateProof(intent, selectedGuardian.identifier);
-      if (!proofResult.success || !proofResult.proof) {
-        throw new Error(proofResult.error || 'Could not generate guardian proof');
-      }
+      const proofPayload = await generateSelectedGuardianProof(intent);
 
       const guardianClient = createRecoveryClient({
         publicClient,
-        walletClient: guardianWalletClient,
+        walletClient: proofPayload.submitterWalletClient,
         recoveryManagerAddress: snapshot.recoveryManager,
       });
 
-      setStatus('Submitting guardian approval...');
+      setStatus(
+        selectedGuardian.guardianType === GuardianType.Passkey
+          ? 'Waiting for passkey approval...'
+          : 'Submitting guardian approval...',
+      );
       const hash = await guardianClient.submitProof({
-        guardianIndex,
-        proof: proofResult.proof,
+        guardianIndex: proofPayload.guardianIndex,
+        proof: proofPayload.proof,
       });
       await publicClient.waitForTransactionReceipt({ hash });
       props.addActivity({
         label: 'Recovery proof submitted',
         txHash: hash,
-        details: `Guardian #${selectedGuardianIndex}`,
+        details: proofPayload.guardianDescription,
       });
 
       setActiveIntent(intent);
@@ -547,14 +696,6 @@ export function RecoverPage(props: RecoverPageProps) {
 
   async function handleClearExpiredRecovery() {
     setError('');
-    if (!snapshot || !snapshot.isActive) {
-      setError('No active recovery session');
-      return;
-    }
-    if (snapshot.status !== 'expired') {
-      setError('Recovery session is not expired yet');
-      return;
-    }
     if (!isAddress(targetWalletInput)) {
       setError('Target wallet address is invalid');
       return;
@@ -562,25 +703,10 @@ export function RecoverPage(props: RecoverPageProps) {
 
     try {
       const walletAddress = getAddress(targetWalletInput);
-      const helperWalletClient = getWalletClient(executorPrivateKey);
-      const helperClient = createRecoveryClient({
-        publicClient,
-        walletClient: helperWalletClient,
-        recoveryManagerAddress: snapshot.recoveryManager,
-      });
-
-      setStatus('Clearing expired recovery...');
-      const hash = await helperClient.clearExpiredRecovery();
-      await publicClient.waitForTransactionReceipt({ hash });
-      props.addActivity({
-        label: 'Expired recovery cleared',
-        txHash: hash,
-        details: `Wallet ${shortAddress(walletAddress)}`,
-      });
-
-      setActiveIntent(null);
-      await lookupWallet(walletAddress, true);
-      setStatus('Expired recovery cleared. No active recovery session now.');
+      const cleared = await clearExpiredRecoveryForWallet(walletAddress);
+      if (!cleared) {
+        setError('Recovery session is not expired or not active.');
+      }
     } catch (clearError) {
       setError(formatRecoverError(clearError, 'Clear expired recovery failed'));
       setStatus('Clear failed');
@@ -641,8 +767,22 @@ export function RecoverPage(props: RecoverPageProps) {
       return;
     }
     await lookupWallet(getAddress(targetWalletInput), true);
+    refreshLocalPasskeyState();
     setStatus('Session refreshed');
   }
+
+  useEffect(() => {
+    refreshLocalPasskeyState();
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === null || event.key === 'aa-wallet-demo-passkeys-v1') {
+        refreshLocalPasskeyState();
+      }
+    }
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -710,7 +850,6 @@ export function RecoverPage(props: RecoverPageProps) {
     <section className="panel-grid two-col">
       <article className="panel">
         <h2>Recovery Portal</h2>
-        <p className="muted">Recover by wallet address. One wallet can have only one active recovery session at a time.</p>
 
         <label className="field">
           <span>1. Wallet address to recover</span>
@@ -758,16 +897,45 @@ export function RecoverPage(props: RecoverPageProps) {
           </div>
         )}
 
-        <label className="field">
-          <span>3. Guardian signer (must match selected guardian)</span>
-          <select value={guardianPrivateKey} onChange={(event) => setGuardianPrivateKey(event.target.value as Hex)}>
-            {DEMO_ACCOUNTS.map((account) => (
-              <option key={account.address} value={account.privateKey}>
-                {account.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {selectedGuardian?.guardianType === GuardianType.EOA ? (
+          <label className="field">
+            <span>3. Guardian signer (must match selected EOA guardian)</span>
+            <select value={guardianPrivateKey} onChange={(event) => setGuardianPrivateKey(event.target.value as Hex)}>
+              {DEMO_ACCOUNTS.map((account) => (
+                <option key={account.address} value={account.privateKey}>
+                  {account.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {selectedGuardian?.guardianType === GuardianType.Passkey ? (
+          <div className="subpanel">
+            <h3>3. Passkey guardian</h3>
+            <p className="muted">Passkey proof is generated via WebAuthn prompt. Tx is submitted by helper signer below.</p>
+            <div className="stats one-col">
+              <div>
+                <span>Selected guardian identifier</span>
+                <strong>{shortHex(selectedGuardian.identifier)}</strong>
+              </div>
+              <div>
+                <span>Local passkey</span>
+                <strong>{selectedPasskey ? `${selectedPasskey.label} (${selectedPasskey.rpId})` : 'Not available on this browser'}</strong>
+              </div>
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={refreshLocalPasskeyState}
+                title="Reload passkeys from local browser storage"
+              >
+                Refresh Local Passkeys ({localPasskeys.length})
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <label className="field">
           <span>Executor / helper signer</span>
@@ -797,12 +965,21 @@ export function RecoverPage(props: RecoverPageProps) {
             <strong>{walletOwner || '-'}</strong>
           </div>
         </div>
+        {selectedGuardianMissingLocalCredential ? (
+          <p className="error">
+            Selected passkey guardian is not available in this browser. Use the same browser/device that enrolled it.
+          </p>
+        ) : null}
 
         <div className="actions">
           <button
             type="button"
             onClick={handleStartRecovery}
-            disabled={!snapshot || activeSession}
+            disabled={
+              !snapshot ||
+              (activeSession && snapshot.status !== 'expired') ||
+              selectedGuardianMissingLocalCredential
+            }
             title="Create a new recovery session and submit the first guardian proof"
           >
             Start Recovery
@@ -810,7 +987,13 @@ export function RecoverPage(props: RecoverPageProps) {
           <button
             type="button"
             onClick={handleSubmitProof}
-            disabled={!snapshot || !activeSession || selectedGuardianAlreadyApproved}
+            disabled={
+              !snapshot ||
+              !activeSession ||
+              snapshot.status === 'expired' ||
+              selectedGuardianAlreadyApproved ||
+              selectedGuardianMissingLocalCredential
+            }
             title="Submit another guardian proof for the active session"
           >
             Submit Additional Proof
@@ -982,6 +1165,14 @@ export function RecoverPage(props: RecoverPageProps) {
                   </div>
                   <span>Type: {toGuardianTypeLabel(guardian.guardianType)}</span>
                   <code>{guardian.guardianType === GuardianType.EOA ? bytes32ToAddress(guardian.identifier) : guardian.identifier}</code>
+                  {guardian.guardianType === GuardianType.Passkey ? (
+                    <span className="muted">
+                      Local credential:{' '}
+                      {passkeysByIdentifier.get(guardian.identifier.toLowerCase())
+                        ? passkeysByIdentifier.get(guardian.identifier.toLowerCase())?.label
+                        : 'Missing on this browser'}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

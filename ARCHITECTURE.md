@@ -1,6 +1,6 @@
 # Social Recovery SDK — Architecture
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2026-02-24
 
 This document defines the codebase structure. For functional requirements and protocol design, see [SPEC.md](./SPEC.md).
@@ -113,6 +113,7 @@ social-recovery-sdk/
 │           │   ├── contracts.ts
 │           │   ├── recovery.ts
 │           │   ├── policy.ts
+│           │   ├── passkeys.ts
 │           │   └── intents.ts
 │           └── styles/
 │               └── global.css

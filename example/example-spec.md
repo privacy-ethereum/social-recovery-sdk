@@ -3,7 +3,7 @@
 ## Status
 
 - Phase 1 (Wallet + EOA guardian recovery): Completed
-- Phase 2 (Passkey guardian flow in app): Pending
+- Phase 2 (Passkey guardian flow in app): Completed
 - Phase 3 (zkJWT guardian flow in app): Pending
 
 ## 1. Objective
@@ -266,7 +266,7 @@ Acceptance criteria:
 3. Owner changes on-chain after execution.
 4. No mocked recovery paths.
 
-### 10.2 Phase 2: Passkey
+### 10.2 Phase 2: Passkey ✅
 
 Deliverables:
 

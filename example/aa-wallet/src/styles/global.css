@@ -216,6 +216,10 @@ button:disabled {
   gap: 8px;
 }
 
+.actions.centered {
+  justify-content: center;
+}
+
 .row {
   display: flex;
   align-items: center;
@@ -315,10 +319,40 @@ code {
   border-radius: 10px;
   background: #fff;
   padding: 10px;
-  display: grid;
-  grid-template-columns: auto 1fr 170px auto;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.guardian-builder-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.guardian-builder-head .row select {
+  width: auto;
+  min-width: 170px;
+}
+
+.guardian-builder-input {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guardian-passkey-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guardian-passkey-row select {
+  flex: 1;
+  min-width: 240px;
 }
 
 .guardian-chip {
@@ -403,7 +437,8 @@ code {
     grid-template-columns: 1fr;
   }
 
-  .guardian-builder-row {
-    grid-template-columns: 1fr;
+  .guardian-passkey-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

@@ -1,7 +1,9 @@
 import {
   EoaAdapter,
+  PasskeyAdapter,
   RecoveryClient,
   RecoveryManagerFactoryAbi,
+  type P256PublicKey,
   type RecoveryPolicy,
   type RecoverySession,
 } from '@pse/social-recovery-sdk';
@@ -46,6 +48,18 @@ export function createRecoveryClient(params: {
 
 export function createEoaAdapter(walletClient: AppWalletClient) {
   return new EoaAdapter({ walletClient: walletClient as never });
+}
+
+export function createPasskeyAdapter(config: {
+  rpId: string;
+  credentialId: `0x${string}`;
+  publicKey: P256PublicKey;
+}) {
+  return new PasskeyAdapter({
+    rpId: config.rpId,
+    credentialId: config.credentialId,
+    publicKey: config.publicKey,
+  });
 }
 
 export async function lookupRecoveryManager(publicClient: AppPublicClient, walletAddress: Address): Promise<Address> {
