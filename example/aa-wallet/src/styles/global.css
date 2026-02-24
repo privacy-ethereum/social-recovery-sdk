@@ -364,6 +364,11 @@ code {
   color: var(--muted);
 }
 
+.approval-chip.idle {
+  background: #f3f4f6;
+  color: #616a76;
+}
+
 .activity-list li > div {
   display: flex;
   justify-content: space-between;

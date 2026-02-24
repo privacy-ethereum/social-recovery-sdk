@@ -959,6 +959,7 @@ export function RecoverPage(props: RecoverPageProps) {
             </div>
 
             <h3>Guardians</h3>
+            {!snapshot.isActive ? <p className="muted">No approvals are tracked until a recovery session is started.</p> : null}
             <ul className="guardian-list">
               {snapshot.policy.guardians.map((guardian, index) => (
                 <li key={`${guardian.identifier}-${index}`} className={index === selectedGuardianIndex ? 'selected' : ''}>
@@ -971,9 +972,13 @@ export function RecoverPage(props: RecoverPageProps) {
                       />
                       <span>Guardian #{index}</span>
                     </label>
-                    <span className={guardianApprovals[index] ? 'approval-chip approved' : 'approval-chip pending'}>
-                      {guardianApprovals[index] ? 'Approved' : 'Pending'}
-                    </span>
+                    {snapshot.isActive ? (
+                      <span className={guardianApprovals[index] ? 'approval-chip approved' : 'approval-chip pending'}>
+                        {guardianApprovals[index] ? 'Approved' : 'Pending'}
+                      </span>
+                    ) : (
+                      <span className="approval-chip idle">No Active Session</span>
+                    )}
                   </div>
                   <span>Type: {toGuardianTypeLabel(guardian.guardianType)}</span>
                   <code>{guardian.guardianType === GuardianType.EOA ? bytes32ToAddress(guardian.identifier) : guardian.identifier}</code>
