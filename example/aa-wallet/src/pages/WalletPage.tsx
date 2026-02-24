@@ -416,10 +416,13 @@ export function WalletPage(props: WalletPageProps) {
       </article>
 
       <article className="panel">
-        <h2>Active Wallet</h2>
+        <h2>Active Smart Wallet (AA)</h2>
+        <p className="muted">
+          This is the deployed account abstraction wallet contract (<code>ExampleAAWallet</code>).
+        </p>
         <div className="stats one-col">
           <div>
-            <span>Wallet</span>
+            <span>AA wallet address</span>
             <strong>{props.walletAddress || '-'}</strong>
           </div>
           <div>

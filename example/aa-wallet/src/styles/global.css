@@ -160,6 +160,17 @@ select {
   color: var(--text);
 }
 
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2012%208'%20fill='none'%20stroke='%232e3338'%20stroke-width='1.7'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M1%201l5%205%205-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 12px 8px;
+  background-position: right 14px center;
+  padding-right: 38px;
+}
+
 textarea {
   resize: vertical;
 }
