@@ -7,6 +7,12 @@ It contains:
 1. `example/contracts` - standalone Foundry project with the demo wallet contracts
 2. `example/aa-wallet` - web app that integrates the SDK and runs recovery flows
 
+## Phase Status
+
+1. Phase 1 (Wallet + EOA recovery): ✅ completed
+2. Phase 2 (Passkey in app flow): pending
+3. Phase 3 (zkJWT in app flow): pending
+
 ## How it works (high level)
 
 1. The web app deploys and uses a demo wallet (`ExampleAAWallet`) from `example/contracts`.

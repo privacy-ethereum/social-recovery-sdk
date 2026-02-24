@@ -87,3 +87,20 @@ Progress tracking for [ROADMAP.md](./ROADMAP.md).
 **SDK/zkJWT hardening:**
 - `parseP256Signature()` now canonicalizes low-`s` signatures for passkey compatibility with on-chain verifier checks
 - zkJWT e2e proof generation uses circuit toolchain with EVM target (`bb prove -t evm`) and on-chain-compatible proof encoding
+
+---
+
+## Example App Track
+
+### Phase 1: Standalone AA Wallet + EOA Recovery ✅
+
+**Implemented under `example/`:**
+- Standalone Foundry wallet project: `example/contracts` (`ExampleAAWallet`, `ExampleAAWalletFactory`, tests)
+- Standalone React app: `example/aa-wallet` with `Wallet`, `Settings`, and `Recover` tabs
+- Real local deployment stack via `local-up.sh` / `deploy-local.ts` (SDK contracts + example wallet factory)
+- EOA guardian recovery flow end-to-end (start, submit, execute, cancel, clear expired)
+- Recovery manager discovery by pasted wallet address in Recover tab
+- Demo-focused UX improvements (state persistence, chain time controls, guardian/session visibility)
+
+**Notes:**
+- Example Phase 2 (passkey flow in app UI) and Phase 3 (zkJWT flow in app UI) remain pending.

@@ -1,7 +1,7 @@
 # Social Recovery SDK — Architecture
 
-**Version:** 1.0.0
-**Date:** 2026-01-12
+**Version:** 1.1.0
+**Date:** 2026-02-24
 
 This document defines the codebase structure. For functional requirements and protocol design, see [SPEC.md](./SPEC.md).
 
@@ -83,8 +83,44 @@ social-recovery-sdk/
 │   │       └── FactoryContract.ts         # Factory contract interactions
 │   └── test/
 │
+├── docs/                         # Documentation site and guides
+│   └── src/
+│
+├── example/                      # Standalone integration project (separate from SDK internals)
+│   ├── README.md                 # Example runbook
+│   ├── example-spec.md           # 3-phase delivery spec for demo app
+│   ├── contracts/                # Standalone Foundry project for demo AA wallet
+│   │   ├── src/
+│   │   │   ├── ExampleAAWallet.sol
+│   │   │   └── ExampleAAWalletFactory.sol
+│   │   └── test/
+│   │       └── ExampleAAWallet.t.sol
+│   └── aa-wallet/                # React + viem demo app
+│       ├── scripts/
+│       │   ├── local-up.sh           # Start Anvil, build/deploy stack, run app
+│       │   ├── local-down.sh         # Stop local services
+│       │   └── deploy-local.ts       # Deploy SDK + example contracts and write local config
+│       └── src/
+│           ├── app/
+│           │   ├── App.tsx
+│           │   └── routes.tsx
+│           ├── pages/
+│           │   ├── WalletPage.tsx
+│           │   ├── SettingsPage.tsx
+│           │   └── RecoverPage.tsx
+│           ├── lib/
+│           │   ├── chain.ts
+│           │   ├── contracts.ts
+│           │   ├── recovery.ts
+│           │   ├── policy.ts
+│           │   └── intents.ts
+│           └── styles/
+│               └── global.css
+│
 ├── SPEC.md                       # Functional requirements, protocol design
 ├── ARCHITECTURE.md               # Codebase structure (this file)
+├── ROADMAP.md                    # SDK roadmap
+├── CHECKLIST.md                  # SDK implementation status
 └── README.md
 ```
 

@@ -1,5 +1,11 @@
 # Example AA Wallet Spec (Local Anvil + Social Recovery)
 
+## Status
+
+- Phase 1 (Wallet + EOA guardian recovery): Completed
+- Phase 2 (Passkey guardian flow in app): Pending
+- Phase 3 (zkJWT guardian flow in app): Pending
+
 ## 1. Objective
 
 Build a minimal but fully functional web wallet that runs on local Anvil and demonstrates social recovery end-to-end in 3 phases:
