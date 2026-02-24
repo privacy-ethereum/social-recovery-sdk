@@ -1,0 +1,7 @@
+node_modules
+dist
+.vite
+.anvil.pid
+.env
+src/config/local-addresses.json
+*.tsbuildinfo
