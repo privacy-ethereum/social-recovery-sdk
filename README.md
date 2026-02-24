@@ -2,7 +2,7 @@
 
 A composable SDK for adding social recovery to smart wallets. Designate guardians who can collectively restore wallet access using EOA signatures, Passkeys, or zero-knowledge proofs of emails and passport.
 
-<p align="center">Security notice: this project has not been audited and is not production-ready.</p>
+<p align="center"><b>Security notice: this project has not been audited and is not production-ready</b></p>
 
 ## Structure
 
@@ -29,21 +29,15 @@ cd sdk && npm run test:e2e
 # Circuits
 cd circuits/zkjwt && nargo build && nargo test
 
-# Standalone example app (Phase 2: EOA + Passkey recovery)
+---
+
+# Standalone example app
 cd example/aa-wallet && npm install && npm run local:up
-```
 
-Stop local example stack:
-
-```bash
+# Stop local example stack:
 cd example/aa-wallet && npm run local:down
 ```
 
 ## Documentation
 
 See [docs/](./docs/README.md) for detailed documentation, [SPEC.md](./SPEC.md) for the full technical specification, [ARCHITECTURE.md](./ARCHITECTURE.md) for the project architecture, [ROADMAP.md](./ROADMAP.md) for the development roadmap, and [CHECKLIST.md](./CHECKLIST.md) for the current progress tracking.
-
-Example app docs:
-
-- [example/README.md](./example/README.md) - standalone demo runbook
-- [example/example-spec.md](./example/example-spec.md) - phased delivery spec (Phase 1 + 2 implemented)
