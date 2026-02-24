@@ -45,6 +45,10 @@ export const ExampleAAWalletFactoryAbi = parseAbi([
   'event WalletRemoved(address indexed owner, address indexed wallet)',
 ]);
 
+export const RecoveryManagerViewAbi = parseAbi([
+  'function hasApproved(bytes32 guardianIdentifier) view returns (bool)',
+]);
+
 export function bytes32ToAddress(bytes32: Hex): Address {
   return getAddress(`0x${bytes32.slice(-40)}`);
 }

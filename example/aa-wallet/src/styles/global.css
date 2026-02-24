@@ -149,7 +149,7 @@ button {
   font: inherit;
 }
 
-input,
+input:not([type='radio']):not([type='checkbox']),
 textarea,
 select {
   width: 100%;
@@ -158,6 +158,14 @@ select {
   padding: 10px 12px;
   background: #fff;
   color: var(--text);
+}
+
+input[type='radio'],
+input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: #0f1115;
 }
 
 select {
@@ -330,6 +338,32 @@ code {
   font-weight: 600;
 }
 
+.guardian-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.approval-chip.approved {
+  background: #ecf6ef;
+  border-color: #b4d8bb;
+  color: #1f6b31;
+}
+
+.approval-chip.pending {
+  background: var(--panel-alt);
+  color: var(--muted);
+}
+
 .activity-list li > div {
   display: flex;
   justify-content: space-between;
@@ -350,6 +384,8 @@ code {
   color: var(--error);
   margin: 0;
   font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (max-width: 940px) {

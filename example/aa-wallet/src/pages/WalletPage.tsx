@@ -35,6 +35,16 @@ export function WalletPage(props: WalletPageProps) {
   const selectedAccount = walletClient.account?.address;
   const signerIsWalletOwner = Boolean(selectedAccount && owner && selectedAccount.toLowerCase() === owner.toLowerCase());
   const walletHasFunds = Number(walletBalance) > 0;
+  const visibleWallets = useMemo(() => {
+    const deduped = new Set(ownedWallets.map((wallet) => wallet.toLowerCase()));
+    const result = [...ownedWallets];
+
+    if (props.walletAddress && signerIsWalletOwner && !deduped.has(props.walletAddress.toLowerCase())) {
+      result.unshift(props.walletAddress);
+    }
+
+    return result;
+  }, [ownedWallets, props.walletAddress, signerIsWalletOwner]);
 
   const refreshOwnedWallets = useCallback(async () => {
     if (!selectedAccount) {
@@ -313,14 +323,9 @@ export function WalletPage(props: WalletPageProps) {
     }
 
     if (props.walletAddress && owner && owner.toLowerCase() !== selectedAccount.toLowerCase()) {
-      props.setWalletAddress('');
-      props.setRecoveryManagerAddress('');
-      setManualWalletInput('');
-      setOwner('');
-      setWalletBalance('0');
-      setStatus('Signer changed. Pick one of this signer wallets or deploy a new one.');
+      setStatus('Signer changed. Active wallet is kept loaded, but execute actions require owner signer.');
     }
-  }, [owner, props.setRecoveryManagerAddress, props.setWalletAddress, props.walletAddress, selectedAccount]);
+  }, [owner, props.walletAddress, selectedAccount]);
 
   return (
     <section className="panel-grid two-col">
@@ -372,9 +377,14 @@ export function WalletPage(props: WalletPageProps) {
 
         <div className="subpanel">
           <h3>Owner Wallets</h3>
-          {ownedWallets.length === 0 ? <p className="muted">No wallets deployed by this signer yet.</p> : null}
+          {visibleWallets.length === 0 ? <p className="muted">No wallets indexed for this signer yet.</p> : null}
+          {visibleWallets.length > ownedWallets.length ? (
+            <p className="muted">
+              Current active wallet is shown because signer matches on-chain owner, even if factory list is outdated.
+            </p>
+          ) : null}
           <ul className="wallet-list">
-            {ownedWallets.map((wallet) => (
+            {visibleWallets.map((wallet) => (
               <li key={wallet}>
                 <code>{wallet}</code>
                 <div className="row gap-sm">
