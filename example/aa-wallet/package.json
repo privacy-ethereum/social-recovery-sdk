@@ -1,0 +1,30 @@
+{
+  "name": "@pse/social-recovery-example-aa-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "deploy:local": "tsx ./scripts/deploy-local.ts",
+    "local:up": "bash ./scripts/local-up.sh",
+    "local:down": "bash ./scripts/local-down.sh"
+  },
+  "dependencies": {
+    "@pse/social-recovery-sdk": "file:../../sdk",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "viem": "^2.39.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.7",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
