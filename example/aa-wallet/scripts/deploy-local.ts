@@ -49,6 +49,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PROJECT_ROOT, '..', '..');
 const SDK_CONTRACTS_OUT_DIR = path.resolve(REPO_ROOT, 'contracts', 'out');
 const EXAMPLE_CONTRACTS_OUT_DIR = path.resolve(REPO_ROOT, 'example', 'contracts', 'out');
+const P256_LIB_OUT_DIR = path.resolve(REPO_ROOT, 'contracts', 'lib', 'p256-verifier', 'out');
 const OUTPUT_CONFIG_PATH = path.resolve(PROJECT_ROOT, 'src', 'config', 'local-addresses.json');
 const DEFAULT_DEPLOYER_PRIVATE_KEY =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex;
@@ -59,6 +60,10 @@ function sdkArtifactPath(relativePath: string): string {
 
 function exampleArtifactPath(relativePath: string): string {
   return path.join(EXAMPLE_CONTRACTS_OUT_DIR, relativePath);
+}
+
+function p256LibArtifactPath(relativePath: string): string {
+  return path.join(P256_LIB_OUT_DIR, relativePath);
 }
 
 function resolveArtifactPath(baseDirPath: (relativePath: string) => string, relativePath: string): string {
@@ -141,7 +146,6 @@ async function deployFromArtifact(params: {
 
 function ensureArtifactsPresent(): void {
   const requiredSdkArtifacts = [
-    'P256VerifierStub.sol/P256VerifierStub.json',
     'PasskeyVerifier.sol/PasskeyVerifier.json',
     'HonkVerifier.sol/ZKTranscriptLib.json',
     'HonkVerifier.sol/HonkVerifier.json',
@@ -149,12 +153,16 @@ function ensureArtifactsPresent(): void {
     'RecoveryManager.sol/RecoveryManager.json',
     'RecoveryManagerFactory.sol/RecoveryManagerFactory.json',
   ];
+  const requiredP256Artifacts = ['P256Verifier.sol/P256Verifier.json'];
   const requiredExampleArtifacts = [
     'ExampleAAWalletFactory.sol/ExampleAAWalletFactory.json',
   ];
 
   for (const relPath of requiredSdkArtifacts) {
     resolveArtifactPath(sdkArtifactPath, relPath);
+  }
+  for (const relPath of requiredP256Artifacts) {
+    resolveArtifactPath(p256LibArtifactPath, relPath);
   }
   for (const relPath of requiredExampleArtifacts) {
     resolveArtifactPath(exampleArtifactPath, relPath);
@@ -183,7 +191,7 @@ async function main(): Promise<void> {
     throw new Error(`Expected Anvil chain id ${anvil.id}, received ${chainId}`);
   }
 
-  const p256VerifierStubArtifact = readArtifact(sdkArtifactPath, 'P256VerifierStub.sol/P256VerifierStub.json');
+  const p256VerifierArtifact = readArtifact(p256LibArtifactPath, 'P256Verifier.sol/P256Verifier.json');
   const passkeyVerifierArtifact = readArtifact(sdkArtifactPath, 'PasskeyVerifier.sol/PasskeyVerifier.json');
   const honkLibraryArtifact = readArtifact(sdkArtifactPath, 'HonkVerifier.sol/ZKTranscriptLib.json');
   const honkVerifierArtifact = readArtifact(sdkArtifactPath, 'HonkVerifier.sol/HonkVerifier.json');
@@ -198,9 +206,9 @@ async function main(): Promise<void> {
     'ExampleAAWalletFactory.sol/ExampleAAWalletFactory.json',
   );
 
-  const p256RuntimeBytecode = p256VerifierStubArtifact.deployedBytecode?.object;
+  const p256RuntimeBytecode = p256VerifierArtifact.deployedBytecode?.object;
   if (!p256RuntimeBytecode || p256RuntimeBytecode === '0x') {
-    throw new Error('P256VerifierStub runtime bytecode is missing');
+    throw new Error('P256Verifier runtime bytecode is missing');
   }
 
   await publicClient.request({

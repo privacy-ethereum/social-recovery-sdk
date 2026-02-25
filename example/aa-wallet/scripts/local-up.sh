@@ -18,6 +18,10 @@ fi
 
 echo "Building contracts..."
 (
+  cd "${REPO_ROOT}/contracts/lib/p256-verifier"
+  FOUNDRY_OFFLINE=true forge build
+)
+(
   cd "${REPO_ROOT}/contracts"
   FOUNDRY_OFFLINE=true forge build
 )
