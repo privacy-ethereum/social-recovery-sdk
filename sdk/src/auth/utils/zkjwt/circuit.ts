@@ -1,8 +1,9 @@
 import { Noir } from '@noir-lang/noir_js';
-import { UltraHonkBackend } from '@aztec/bb.js';
+import { Barretenberg, BackendType, UltraHonkBackend } from '@aztec/bb.js';
 
 // The circuit artifact is loaded lazily to avoid bundling the 1.3MB JSON at import time
 let circuitArtifact: any = null;
+let barretenbergApiPromise: Promise<Barretenberg> | null = null;
 
 async function loadCircuitArtifact(): Promise<any> {
   if (!circuitArtifact) {
@@ -11,6 +12,22 @@ async function loadCircuitArtifact(): Promise<any> {
     circuitArtifact = module.default ?? module;
   }
   return circuitArtifact;
+}
+
+async function getBarretenbergApi(): Promise<Barretenberg> {
+  if (!barretenbergApiPromise) {
+    // Force single-threaded WASM backend for broad browser compatibility (no COOP/COEP dependency).
+    // bb.js v3+ requires passing a Barretenberg API instance into UltraHonkBackend.
+    barretenbergApiPromise = Barretenberg.new({
+      backend: BackendType.Wasm,
+      threads: 1,
+    }).catch((error) => {
+      barretenbergApiPromise = null;
+      throw error;
+    });
+  }
+
+  return barretenbergApiPromise;
 }
 
 /// BN254 scalar field modulus — intent hashes must be reduced mod this value
@@ -82,19 +99,15 @@ export async function generateZkJwtProof(inputs: ZkJwtCircuitInputs): Promise<Zk
     );
   }
 
-  // Generate proof using UltraHonk backend
-  const backend = new UltraHonkBackend(artifact.bytecode);
-  let proof: Uint8Array;
-  let publicInputs: string[];
+  // Generate proof using UltraHonk backend with EVM transcript settings.
+  const api = await getBarretenbergApi();
+  const backend = new UltraHonkBackend(artifact.bytecode, api);
   try {
-    const result = await backend.generateProof(witness);
-    proof = result.proof;
-    publicInputs = result.publicInputs;
+    const result = await backend.generateProof(witness, { verifierTarget: 'evm' });
+    return { rawProof: result.proof, publicInputs: result.publicInputs };
   } catch (error) {
     throw new Error(
       `backend.generateProof failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-
-  return { rawProof: proof, publicInputs };
 }

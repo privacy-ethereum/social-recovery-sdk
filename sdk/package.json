@@ -10,12 +10,16 @@
     "test:e2e": "bash ./scripts/test-e2e.sh",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["ethereum", "social-recovery", "wallet"],
+  "keywords": [
+    "ethereum",
+    "social-recovery",
+    "wallet"
+  ],
   "author": "",
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@aztec/bb.js": "0.82.2",
+    "@aztec/bb.js": "^3.0.0-nightly.20260102",
     "@noir-lang/noir_js": "1.0.0-beta.18",
     "viem": "^2.0.0"
   },

@@ -30,6 +30,12 @@ echo "Building contracts..."
   FOUNDRY_OFFLINE=true forge build
 )
 
+echo "Building SDK..."
+(
+  cd "${REPO_ROOT}/sdk"
+  npm run build
+)
+
 echo "Deploying local contract stack..."
 (
   cd "${ROOT_DIR}"

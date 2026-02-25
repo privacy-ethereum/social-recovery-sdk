@@ -227,6 +227,9 @@ function formatRecoverError(error: unknown, fallback: string): string {
   if (message.includes('No Google JWK found')) {
     return 'Google signing key for this token was not found. Re-authenticate to get a fresh token.';
   }
+  if (message.includes('backend.generateProof failed') && message.toLowerCase().includes('unreachable')) {
+    return 'zkJWT prover crashed in-browser. Reload and retry. If it persists, restart local stack and disable browser shields/tracking protection.';
+  }
   if (message.includes('noir.execute failed') || message.includes('backend.generateProof failed')) {
     return firstLine.length > 220 ? `${firstLine.slice(0, 220)}...` : firstLine;
   }

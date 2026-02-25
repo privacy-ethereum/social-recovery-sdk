@@ -1,16 +1,50 @@
-import { BarretenbergSync, Fr } from '@aztec/bb.js';
+import { BackendType, BarretenbergSync } from '@aztec/bb.js';
 
 export const PACKED_EMAIL_FIELDS = 5;
 export const BYTES_PER_FIELD = 31;
 
 let bbInstance: BarretenbergSync | null = null;
 
+function bigintToFieldBytes(value: bigint): Uint8Array {
+  if (value < 0n) {
+    throw new Error('Field elements must be non-negative');
+  }
+
+  let hex = value.toString(16);
+  if (hex.length > 64) {
+    throw new Error('Field element does not fit in 32 bytes');
+  }
+  if (hex.length % 2 !== 0) {
+    hex = `0${hex}`;
+  }
+
+  const bytes = new Uint8Array(32);
+  const byteLength = hex.length / 2;
+  const start = 32 - byteLength;
+  for (let i = 0; i < byteLength; i++) {
+    const byteHex = hex.slice(i * 2, i * 2 + 2);
+    bytes[start + i] = Number.parseInt(byteHex, 16);
+  }
+  return bytes;
+}
+
+function fieldBytesToBigInt(field: Uint8Array): bigint {
+  let value = 0n;
+  for (const byte of field) {
+    value = (value << 8n) + BigInt(byte);
+  }
+  return value;
+}
+
 /**
  * Initialize Barretenberg (call once at startup)
  */
 export async function initBarretenberg(): Promise<BarretenbergSync> {
   if (!bbInstance) {
-    bbInstance = await BarretenbergSync.initSingleton();
+    bbInstance = await BarretenbergSync.initSingleton({
+      backend: BackendType.Wasm,
+      threads: 1,
+    });
   }
   return bbInstance;
 }
@@ -53,42 +87,46 @@ export function packEmailToFields(email: string): bigint[] {
 /**
  * Compute the email hash: Poseidon2([packed[0..4], email_len], 6)
  */
-export function computeEmailHash(bb: BarretenbergSync, email: string): Fr {
+export function computeEmailHash(bb: BarretenbergSync, email: string): bigint {
   const packed = packEmailToFields(email);
   const emailLen = BigInt(new TextEncoder().encode(email).length);
 
-  const inputs: Fr[] = [
-    new Fr(packed[0]),
-    new Fr(packed[1]),
-    new Fr(packed[2]),
-    new Fr(packed[3]),
-    new Fr(packed[4]),
-    new Fr(emailLen),
+  const inputs: bigint[] = [
+    packed[0],
+    packed[1],
+    packed[2],
+    packed[3],
+    packed[4],
+    emailLen,
   ];
 
-  return bb.poseidon2Hash(inputs);
+  const result = bb.poseidon2Hash({
+    inputs: inputs.map(bigintToFieldBytes),
+  });
+  return fieldBytesToBigInt(result.hash);
 }
 
 /**
  * Compute the commitment: Poseidon2([email_hash, salt], 2)
  */
-export function computeCommitment(bb: BarretenbergSync, email: string, salt: bigint): Fr {
+export function computeCommitment(bb: BarretenbergSync, email: string, salt: bigint): bigint {
   const emailHash = computeEmailHash(bb, email);
-  const inputs: Fr[] = [emailHash, new Fr(salt)];
-  return bb.poseidon2Hash(inputs);
+  const result = bb.poseidon2Hash({
+    inputs: [emailHash, salt].map(bigintToFieldBytes),
+  });
+  return fieldBytesToBigInt(result.hash);
 }
 
 /**
  * Convert a Fr element to a hex string
  */
-export function frToHex(fr: Fr): string {
-  return fr.toString();
+export function frToHex(fr: bigint): string {
+  return `0x${fr.toString(16).padStart(64, '0')}`;
 }
 
 /**
  * Convert a Fr element to a BigInt
  */
-export function frToBigInt(fr: Fr): bigint {
-  const hex = fr.toString();
-  return BigInt(hex);
+export function frToBigInt(fr: bigint): bigint {
+  return fr;
 }
