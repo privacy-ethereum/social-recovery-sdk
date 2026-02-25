@@ -7,6 +7,7 @@ export interface GuardianPolicyEntry {
   type: GuardianKind;
   address?: string;
   passkeyPublicKey?: P256PublicKey;
+  zkjwtCommitment?: `0x${string}`;
 }
 
 export interface GuardianPolicyInput {
@@ -67,6 +68,14 @@ export function buildGuardianPolicy(input: GuardianPolicyInput) {
         continue;
       }
       builder.addPasskeyGuardian(guardian.passkeyPublicKey);
+      continue;
+    }
+
+    if (guardian.type === 'zkjwt') {
+      if (!guardian.zkjwtCommitment) {
+        continue;
+      }
+      builder.addZkJwtGuardian(guardian.zkjwtCommitment);
     }
   }
 

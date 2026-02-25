@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GuardianType, type RecoveryPolicy } from '@pse/social-recovery-sdk';
+import { GuardianType, computeZkJwtIdentifier, type RecoveryPolicy } from '@pse/social-recovery-sdk';
 import { anvil } from 'viem/chains';
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { DEMO_ACCOUNTS, getPublicClient, getWalletClient } from '../lib/chain';
@@ -24,6 +24,8 @@ interface GuardianDraft {
   type: GuardianKind;
   identifier: string;
   passkeyId: string;
+  zkEmail: string;
+  zkSalt: string;
 }
 
 interface PersistedSettingsState {
@@ -48,6 +50,8 @@ function createGuardianDraft(identifier = ''): GuardianDraft {
     type: 'eoa',
     identifier,
     passkeyId: '',
+    zkEmail: '',
+    zkSalt: '',
   };
 }
 
@@ -82,6 +86,8 @@ function normalizeGuardianDraft(value: unknown): GuardianDraft | null {
     type: candidate.type,
     identifier: candidate.identifier,
     passkeyId: candidate.passkeyId,
+    zkEmail: typeof candidate.zkEmail === 'string' ? candidate.zkEmail : '',
+    zkSalt: typeof candidate.zkSalt === 'string' ? candidate.zkSalt : '',
   };
 }
 
@@ -190,7 +196,7 @@ export function SettingsPage(props: SettingsPageProps) {
     [passkeys],
   );
 
-  function mapPolicyToGuardianDrafts(policy: RecoveryPolicy): GuardianDraft[] {
+  function mapPolicyToGuardianDrafts(policy: RecoveryPolicy, existingGuardians: GuardianDraft[]): GuardianDraft[] {
     const next = policy.guardians.map((guardian) => {
       if (guardian.guardianType === GuardianType.EOA) {
         return createGuardianDraft(bytes32ToAddress(guardian.identifier));
@@ -203,14 +209,21 @@ export function SettingsPage(props: SettingsPageProps) {
           type: 'passkey' as const,
           identifier: guardian.identifier,
           passkeyId: localPasskey?.id ?? '',
+          zkEmail: '',
+          zkSalt: '',
         };
       }
 
+      const existing = existingGuardians.find(
+        (entry) => entry.type === 'zkjwt' && entry.identifier.toLowerCase() === guardian.identifier.toLowerCase(),
+      );
       return {
         id: createGuardianDraftId(),
         type: 'zkjwt' as const,
         identifier: guardian.identifier,
         passkeyId: '',
+        zkEmail: existing?.zkEmail ?? '',
+        zkSalt: existing?.zkSalt ?? '',
       };
     });
 
@@ -218,7 +231,7 @@ export function SettingsPage(props: SettingsPageProps) {
   }
 
   function applyPolicyToForm(policy: RecoveryPolicy) {
-    setGuardians(mapPolicyToGuardianDrafts(policy));
+    setGuardians((current) => mapPolicyToGuardianDrafts(policy, current));
     setThreshold(policy.threshold.toString());
     setChallengePeriod(policy.challengePeriod.toString());
   }
@@ -271,6 +284,8 @@ export function SettingsPage(props: SettingsPageProps) {
             type: nextType,
             passkeyId: defaultPasskey?.id ?? '',
             identifier: defaultPasskey?.identifier ?? '',
+            zkEmail: '',
+            zkSalt: '',
           };
         }
 
@@ -280,6 +295,8 @@ export function SettingsPage(props: SettingsPageProps) {
             type: nextType,
             passkeyId: '',
             identifier: '',
+            zkEmail: guardian.type === 'zkjwt' ? guardian.zkEmail : '',
+            zkSalt: guardian.type === 'zkjwt' ? guardian.zkSalt : '',
           };
         }
 
@@ -288,6 +305,8 @@ export function SettingsPage(props: SettingsPageProps) {
           type: nextType,
           passkeyId: '',
           identifier: guardian.type === 'eoa' ? guardian.identifier : '',
+          zkEmail: '',
+          zkSalt: '',
         };
       }),
     );
@@ -298,6 +317,8 @@ export function SettingsPage(props: SettingsPageProps) {
     updateGuardian(guardianId, {
       passkeyId,
       identifier: selected?.identifier ?? '',
+      zkEmail: '',
+      zkSalt: '',
     });
   }
 
@@ -308,7 +329,27 @@ export function SettingsPage(props: SettingsPageProps) {
     });
   }
 
-  function parsePolicyInput(walletAddress: Address) {
+  function parseGuardianSalt(rawValue: string): bigint {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      throw new Error('Salt is required for each ZK JWT guardian row.');
+    }
+    let parsed: bigint;
+    try {
+      parsed = BigInt(trimmed);
+    } catch {
+      throw new Error('Salt must be a valid integer.');
+    }
+    if (parsed <= 0n) {
+      throw new Error('Salt must be greater than zero.');
+    }
+    return parsed;
+  }
+
+  async function parsePolicyInput(walletAddress: Address): Promise<{
+    policy: RecoveryPolicy;
+    normalizedGuardians: GuardianDraft[];
+  }> {
     const normalizedEoaGuardians = normalizeGuardianAddresses(
       guardians.filter((guardian) => guardian.type === 'eoa').map((guardian) => guardian.identifier),
     );
@@ -326,12 +367,24 @@ export function SettingsPage(props: SettingsPageProps) {
         return selectedPasskey;
       });
 
-    const unsupportedGuardians = guardians.filter((guardian) => guardian.type === 'zkjwt' && guardian.identifier.trim());
-    if (unsupportedGuardians.length > 0) {
-      throw new Error('ZK JWT guardians will be enabled in Phase 3.');
+    const zkjwtGuardians: { email: string; salt: bigint; commitment: Hex }[] = [];
+    const zkjwtCommitmentsById = new Map<string, Hex>();
+    for (const guardian of guardians) {
+      if (guardian.type !== 'zkjwt') {
+        continue;
+      }
+
+      const email = guardian.zkEmail.trim().toLowerCase();
+      if (!email) {
+        throw new Error('Email is required for each ZK JWT guardian row.');
+      }
+      const salt = parseGuardianSalt(guardian.zkSalt);
+      const commitment = (await computeZkJwtIdentifier(email, salt)) as Hex;
+      zkjwtGuardians.push({ email, salt, commitment });
+      zkjwtCommitmentsById.set(guardian.id, commitment);
     }
 
-    const totalGuardians = normalizedEoaGuardians.length + configuredPasskeyGuardians.length;
+    const totalGuardians = normalizedEoaGuardians.length + configuredPasskeyGuardians.length + zkjwtGuardians.length;
     if (totalGuardians === 0) {
       throw new Error('At least one guardian is required');
     }
@@ -349,7 +402,7 @@ export function SettingsPage(props: SettingsPageProps) {
       throw new Error('Challenge period cannot be negative');
     }
 
-    return buildGuardianPolicy({
+    const policy = buildGuardianPolicy({
       wallet: walletAddress,
       guardians: [
         ...normalizedEoaGuardians.map((address) => ({ type: 'eoa' as const, address })),
@@ -357,10 +410,31 @@ export function SettingsPage(props: SettingsPageProps) {
           type: 'passkey' as const,
           passkeyPublicKey: passkey.publicKey,
         })),
+        ...zkjwtGuardians.map((guardian) => ({
+          type: 'zkjwt' as const,
+          zkjwtCommitment: guardian.commitment,
+        })),
       ],
       threshold: thresholdValue,
       challengePeriod: challengePeriodValue,
     });
+
+    const normalizedGuardians = guardians.map((guardian) => {
+      if (guardian.type !== 'zkjwt') {
+        return guardian;
+      }
+
+      const normalizedEmail = guardian.zkEmail.trim().toLowerCase();
+      const normalizedSalt = parseGuardianSalt(guardian.zkSalt).toString();
+      return {
+        ...guardian,
+        zkEmail: normalizedEmail,
+        zkSalt: normalizedSalt,
+        identifier: zkjwtCommitmentsById.get(guardian.id) ?? guardian.identifier,
+      };
+    });
+
+    return { policy, normalizedGuardians };
   }
 
   async function refreshRecoveryConfiguration(targetWallet?: Address) {
@@ -440,7 +514,8 @@ export function SettingsPage(props: SettingsPageProps) {
         return;
       }
 
-      const policy = parsePolicyInput(walletAddress);
+      const { policy, normalizedGuardians } = await parsePolicyInput(walletAddress);
+      setGuardians(normalizedGuardians);
       const ownerClient = createRecoveryClient({
         publicClient,
         walletClient: ownerWalletClient,
@@ -509,7 +584,8 @@ export function SettingsPage(props: SettingsPageProps) {
 
     try {
       const walletAddress = resolveWalletAddress();
-      const policy = parsePolicyInput(walletAddress);
+      const { policy, normalizedGuardians } = await parsePolicyInput(walletAddress);
+      setGuardians(normalizedGuardians);
       const ownerClient = createRecoveryClient({
         publicClient,
         walletClient: ownerWalletClient,
@@ -665,9 +741,7 @@ export function SettingsPage(props: SettingsPageProps) {
                     >
                       <option value="eoa">EOA</option>
                       <option value="passkey">Passkey</option>
-                      <option value="zkjwt" disabled>
-                        ZK JWT (Phase 3)
-                      </option>
+                      <option value="zkjwt">ZK JWT</option>
                     </select>
                     <button
                       type="button"
@@ -714,12 +788,34 @@ export function SettingsPage(props: SettingsPageProps) {
                   ) : null}
 
                   {guardian.type === 'zkjwt' ? (
-                    <input
-                      value={guardian.identifier}
-                      onChange={(event) => updateGuardian(guardian.id, { identifier: event.target.value })}
-                      placeholder="ZK JWT commitment (Phase 3)"
-                      disabled
-                    />
+                    <div className="guardian-zkjwt-grid">
+                      <input
+                        value={guardian.zkEmail}
+                        onChange={(event) =>
+                          updateGuardian(guardian.id, {
+                            zkEmail: event.target.value,
+                            identifier: '',
+                          })
+                        }
+                        placeholder="Google email (guardian)"
+                      />
+                      <input
+                        value={guardian.zkSalt}
+                        onChange={(event) =>
+                          updateGuardian(guardian.id, {
+                            zkSalt: event.target.value,
+                            identifier: '',
+                          })
+                        }
+                        placeholder="Random salt (integer)"
+                      />
+                      <div className="stats one-col">
+                        <div>
+                          <span>Commitment</span>
+                          <strong>{guardian.identifier || 'Computed on deploy/update'}</strong>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               </li>

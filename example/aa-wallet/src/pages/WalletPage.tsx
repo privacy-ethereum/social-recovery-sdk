@@ -81,14 +81,23 @@ export function WalletPage(props: WalletPageProps) {
         return;
       }
 
-      const [nextOwner, nextBalance] = await Promise.all([
-        publicClient.readContract({
+      const bytecode = await publicClient.getBytecode({ address: wallet });
+      if (!bytecode || bytecode === '0x') {
+        throw new Error('Selected address is not a deployed contract on current chain.');
+      }
+
+      let nextOwner: Address;
+      try {
+        nextOwner = await publicClient.readContract({
           address: wallet,
           abi: ExampleAAWalletAbi,
           functionName: 'owner',
-        }),
-        publicClient.getBalance({ address: wallet }),
-      ]);
+        });
+      } catch {
+        throw new Error('Selected contract is not ExampleAAWallet (owner() call failed).');
+      }
+
+      const nextBalance = await publicClient.getBalance({ address: wallet });
 
       setOwner(nextOwner);
       setWalletBalance(formatEther(nextBalance));
@@ -102,9 +111,9 @@ export function WalletPage(props: WalletPageProps) {
   );
 
   async function setActiveWallet(wallet: Address) {
-    props.setWalletAddress(wallet);
     setManualWalletInput(wallet);
     await refreshWalletState(wallet);
+    props.setWalletAddress(wallet);
   }
 
   async function handleDeployWallet() {
@@ -314,7 +323,18 @@ export function WalletPage(props: WalletPageProps) {
     }
 
     setManualWalletInput(props.walletAddress);
-    void refreshWalletState();
+    void (async () => {
+      try {
+        await refreshWalletState();
+      } catch (refreshError) {
+        setError(refreshError instanceof Error ? refreshError.message : 'Failed to load wallet');
+        setStatus('Load failed');
+        props.setWalletAddress('');
+        props.setRecoveryManagerAddress('');
+        setOwner('');
+        setWalletBalance('0');
+      }
+    })();
   }, [props.walletAddress, refreshWalletState]);
 
   useEffect(() => {

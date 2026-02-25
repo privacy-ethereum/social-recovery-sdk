@@ -11,7 +11,7 @@ It contains:
 
 1. Phase 1 (Wallet + EOA recovery): ✅ completed
 2. Phase 2 (Passkey in app flow): ✅ completed
-3. Phase 3 (zkJWT in app flow): pending
+3. Phase 3 (zkJWT in app flow): ✅ completed
 
 ## How it works (high level)
 
@@ -24,6 +24,7 @@ Current implemented guardian flow:
 
 1. EOA guardians
 2. Passkey guardians (WebAuthn)
+3. zkJWT guardians (Google ID token -> zk proof -> on-chain verification)
 
 Passkey note:
 
@@ -37,6 +38,24 @@ Passkey note:
 3. Foundry (`forge`, `anvil`)
 4. `jq` and `cast`
 5. Browser with WebAuthn/passkey support (Chrome/Safari/Edge recent versions)
+6. Google OAuth client ID (for zkJWT guardian authentication)
+
+## Google OAuth setup (zkJWT guardian)
+
+Create a Web OAuth client in Google Cloud Console and configure:
+
+1. Authorized JavaScript origins:
+   - `http://localhost:5173`
+   - `http://127.0.0.1:5173`
+2. Authorized redirect URIs:
+   - `http://localhost:5173/google-oauth-callback.html`
+   - `http://127.0.0.1:5173/google-oauth-callback.html`
+
+Set client ID in `example/aa-wallet/.env`:
+
+```bash
+VITE_GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
 
 ## Run locally (Anvil)
 
@@ -54,6 +73,12 @@ What `local:up` does:
 4. deploys SDK contracts + example wallet factory
 5. writes deployed addresses to `example/aa-wallet/src/config/local-addresses.json`
 6. starts the web app
+
+Then open `http://localhost:5173` and use:
+
+1. `Wallet` tab to deploy wallet/fund/send
+2. `Recovery Setup` tab to configure guardians and deploy manager/policy
+3. `Recovery` tab to run EOA/Passkey/zkJWT recovery sessions
 
 Stop local services:
 

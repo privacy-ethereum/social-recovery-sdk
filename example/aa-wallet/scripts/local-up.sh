@@ -39,5 +39,5 @@ echo "Deploying local contract stack..."
 echo "Starting web app..."
 (
   cd "${ROOT_DIR}"
-  VITE_RPC_URL="http://127.0.0.1:${ANVIL_PORT}" npm run dev -- --host 0.0.0.0 --port 5173
+  VITE_RPC_URL="http://127.0.0.1:${ANVIL_PORT}" npm run dev -- --host 0.0.0.0 --port 5173 --force
 )

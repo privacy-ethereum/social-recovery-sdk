@@ -4,7 +4,7 @@
 
 - Phase 1 (Wallet + EOA guardian recovery): Completed
 - Phase 2 (Passkey guardian flow in app): Completed
-- Phase 3 (zkJWT guardian flow in app): Pending
+- Phase 3 (zkJWT guardian flow in app): Completed
 
 ## 1. Objective
 

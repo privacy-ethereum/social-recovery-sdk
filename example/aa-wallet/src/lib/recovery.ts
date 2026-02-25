@@ -3,6 +3,7 @@ import {
   PasskeyAdapter,
   RecoveryClient,
   RecoveryManagerFactoryAbi,
+  ZkJwtAdapter,
   type P256PublicKey,
   type RecoveryPolicy,
   type RecoverySession,
@@ -59,6 +60,13 @@ export function createPasskeyAdapter(config: {
     rpId: config.rpId,
     credentialId: config.credentialId,
     publicKey: config.publicKey,
+  });
+}
+
+export function createZkJwtAdapter(config: { jwt: string; salt: bigint }) {
+  return new ZkJwtAdapter({
+    jwt: config.jwt,
+    salt: config.salt,
   });
 }
 

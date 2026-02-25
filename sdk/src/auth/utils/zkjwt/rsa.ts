@@ -57,8 +57,24 @@ export function extractModulusFromJwk(jwk: JsonWebKey): bigint {
   }
 
   const base64 = jwk.n.replace(/-/g, '+').replace(/_/g, '/');
-  const bytes = Buffer.from(base64, 'base64');
-  return BigInt('0x' + bytes.toString('hex'));
+  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+
+  let bytes: Uint8Array;
+  if (typeof atob === 'function') {
+    const binary = atob(padded);
+    bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } else {
+    const bufferCtor = (globalThis as { Buffer?: { from(value: string, encoding: string): Uint8Array } }).Buffer;
+    if (!bufferCtor) {
+      throw new Error('No base64 decoder available in this environment');
+    }
+    bytes = bufferCtor.from(padded, 'base64');
+  }
+
+  const hex = Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  return BigInt(`0x${hex || '0'}`);
 }
 
 /**

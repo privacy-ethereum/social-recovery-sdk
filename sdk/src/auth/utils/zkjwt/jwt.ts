@@ -9,6 +9,23 @@ export interface JwtInputs {
   redcParamsLimbs: bigint[];
 }
 
+function decodeBase64UrlToBytes(input: string): Uint8Array {
+  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+
+  if (typeof atob === 'function') {
+    const binary = atob(padded);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  const bufferCtor = (globalThis as { Buffer?: { from(value: string, encoding: string): Uint8Array } }).Buffer;
+  if (bufferCtor) {
+    return bufferCtor.from(padded, 'base64');
+  }
+
+  throw new Error('No base64 decoder available in this environment');
+}
+
 /**
  * Extract circuit inputs from a JWT
  *
@@ -45,9 +62,11 @@ export function extractJwtInputs(
   signedDataPadded.set(signedData);
 
   // Extract signature as BigInt
-  const signatureBase64 = signatureBase64Url.replace(/-/g, '+').replace(/_/g, '/');
-  const signatureBytes = Buffer.from(signatureBase64, 'base64');
-  const signatureBigInt = BigInt('0x' + signatureBytes.toString('hex'));
+  const signatureBytes = decodeBase64UrlToBytes(signatureBase64Url);
+  const signatureHex = Array.from(signatureBytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  const signatureBigInt = BigInt(`0x${signatureHex || '0'}`);
 
   // Extract pubkey modulus as BigInt
   const pubkeyBigInt = extractModulusFromJwk(publicKeyJwk);

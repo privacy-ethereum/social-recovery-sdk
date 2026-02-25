@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GuardianType, type RecoveryIntent } from '@pse/social-recovery-sdk';
+import { GuardianType, computeZkJwtIdentifier, decodeJwtPayload, type RecoveryIntent } from '@pse/social-recovery-sdk';
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { DEMO_ACCOUNTS, getPublicClient, getWalletClient, increaseAnvilTime, shortAddress } from '../lib/chain';
 import { ExampleAAWalletAbi, RecoveryManagerViewAbi, bytes32ToAddress } from '../lib/contracts';
@@ -10,9 +10,11 @@ import {
   createEoaAdapter,
   createPasskeyAdapter,
   createRecoveryClient,
+  createZkJwtAdapter,
   loadRecoverySnapshot,
   type RecoverySnapshot,
 } from '../lib/recovery';
+import { requestGoogleIdTokenPopup } from '../lib/google-oauth';
 
 interface RecoverPageProps {
   walletAddress: Address | '';
@@ -30,6 +32,14 @@ interface PersistedRecoverState {
   guardianPrivateKey: Hex;
   executorPrivateKey: Hex;
   cancelOwnerPrivateKey: Hex;
+  zkjwtInputs: Record<string, { salt: string }>;
+}
+
+interface ZkJwtTokenState {
+  idToken: string;
+  email: string;
+  exp: number | null;
+  issuedAt: string;
 }
 
 const KNOWN_PRIVATE_KEYS = new Set<Hex>(DEMO_ACCOUNTS.map((account) => account.privateKey));
@@ -51,6 +61,7 @@ function loadPersistedRecoverState(): PersistedRecoverState {
       guardianPrivateKey: DEMO_ACCOUNTS[1].privateKey,
       executorPrivateKey: DEMO_ACCOUNTS[3].privateKey,
       cancelOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+      zkjwtInputs: {},
     };
   }
 
@@ -65,9 +76,25 @@ function loadPersistedRecoverState(): PersistedRecoverState {
         guardianPrivateKey: DEMO_ACCOUNTS[1].privateKey,
         executorPrivateKey: DEMO_ACCOUNTS[3].privateKey,
         cancelOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+        zkjwtInputs: {},
       };
     }
     const parsed = JSON.parse(raw) as Partial<PersistedRecoverState>;
+    const zkjwtInputs: Record<string, { salt: string }> = {};
+    if (parsed.zkjwtInputs && typeof parsed.zkjwtInputs === 'object') {
+      for (const [key, value] of Object.entries(parsed.zkjwtInputs)) {
+        if (!value || typeof value !== 'object') {
+          continue;
+        }
+        const candidate = value as { salt?: unknown };
+        if (typeof candidate.salt !== 'string') {
+          continue;
+        }
+        zkjwtInputs[key.toLowerCase()] = {
+          salt: candidate.salt,
+        };
+      }
+    }
 
     return {
       targetWalletInput: typeof parsed.targetWalletInput === 'string' ? parsed.targetWalletInput : '',
@@ -84,6 +111,7 @@ function loadPersistedRecoverState(): PersistedRecoverState {
       guardianPrivateKey: normalizePrivateKey(parsed.guardianPrivateKey, DEMO_ACCOUNTS[1].privateKey),
       executorPrivateKey: normalizePrivateKey(parsed.executorPrivateKey, DEMO_ACCOUNTS[3].privateKey),
       cancelOwnerPrivateKey: normalizePrivateKey(parsed.cancelOwnerPrivateKey, DEMO_ACCOUNTS[0].privateKey),
+      zkjwtInputs,
     };
   } catch {
     return {
@@ -94,6 +122,7 @@ function loadPersistedRecoverState(): PersistedRecoverState {
       guardianPrivateKey: DEMO_ACCOUNTS[1].privateKey,
       executorPrivateKey: DEMO_ACCOUNTS[3].privateKey,
       cancelOwnerPrivateKey: DEMO_ACCOUNTS[0].privateKey,
+      zkjwtInputs: {},
     };
   }
 }
@@ -128,6 +157,7 @@ function formatRecoverError(error: unknown, fallback: string): string {
   }
 
   const message = error.message || fallback;
+  const firstLine = message.split('\n')[0].trim();
   if (message.includes('GuardianAlreadyApproved')) {
     return 'This guardian already approved the active recovery session.';
   }
@@ -161,8 +191,45 @@ function formatRecoverError(error: unknown, fallback: string): string {
   ) {
     return 'Passkey prompt was cancelled or timed out.';
   }
-
-  const firstLine = message.split('\n')[0].trim();
+  if (message.includes('Google OAuth popup was blocked')) {
+    return 'Google popup was blocked by the browser. Allow popups and try again.';
+  }
+  if (message.includes('Google OAuth popup was closed')) {
+    return 'Google popup was closed before authentication finished.';
+  }
+  if (message.includes('Google OAuth timed out')) {
+    return 'Google authentication timed out. Try again.';
+  }
+  if (message.includes('Google OAuth state mismatch')) {
+    return 'Google authentication state mismatch. Try again.';
+  }
+  if (message.includes('Google id_token nonce mismatch')) {
+    return 'Google authentication nonce mismatch. Try again.';
+  }
+  if (message.includes('did not return an id_token')) {
+    return 'Google did not return an ID token. Verify OpenID scope is enabled.';
+  }
+  if (message.includes('Authenticated Google account does not match selected ZK JWT guardian commitment')) {
+    return 'Authenticated Google account + salt do not match selected guardian commitment.';
+  }
+  if (message.includes('email_verified')) {
+    return 'Google token must have email_verified = true.';
+  }
+  if (message.includes('Guardian identifier does not match JWT email + salt commitment')) {
+    return 'Email/salt do not match this on-chain ZK JWT guardian.';
+  }
+  if (message.includes('Failed to fetch Google JWKS')) {
+    return 'Could not fetch Google signing keys. Check network and try again.';
+  }
+  if (message === 'Failed to fetch' || message.includes('fetch failed')) {
+    return 'Network request failed while loading Google signing keys. Check internet connection/browser shields and retry.';
+  }
+  if (message.includes('No Google JWK found')) {
+    return 'Google signing key for this token was not found. Re-authenticate to get a fresh token.';
+  }
+  if (message.includes('noir.execute failed') || message.includes('backend.generateProof failed')) {
+    return firstLine.length > 220 ? `${firstLine.slice(0, 220)}...` : firstLine;
+  }
   if (firstLine.length === 0) {
     return fallback;
   }
@@ -176,6 +243,23 @@ function shortHex(value: string): string {
   return `${value.slice(0, 10)}...${value.slice(-6)}`;
 }
 
+function parseZkjwtSaltInput(rawSalt: string): bigint {
+  const trimmed = rawSalt.trim();
+  if (!trimmed) {
+    throw new Error('Salt is required for ZK JWT guardian.');
+  }
+  let salt: bigint;
+  try {
+    salt = BigInt(trimmed);
+  } catch {
+    throw new Error('Salt must be a valid integer.');
+  }
+  if (salt <= 0n) {
+    throw new Error('Salt must be greater than zero.');
+  }
+  return salt;
+}
+
 export function RecoverPage(props: RecoverPageProps) {
   const initialState = useMemo(() => loadPersistedRecoverState(), []);
   const [targetWalletInput, setTargetWalletInput] = useState<string>(props.walletAddress || initialState.targetWalletInput);
@@ -185,6 +269,8 @@ export function RecoverPage(props: RecoverPageProps) {
   const [guardianPrivateKey, setGuardianPrivateKey] = useState<Hex>(initialState.guardianPrivateKey);
   const [executorPrivateKey, setExecutorPrivateKey] = useState<Hex>(initialState.executorPrivateKey);
   const [cancelOwnerPrivateKey, setCancelOwnerPrivateKey] = useState<Hex>(initialState.cancelOwnerPrivateKey);
+  const [zkjwtInputs, setZkjwtInputs] = useState<Record<string, { salt: string }>>(initialState.zkjwtInputs);
+  const [zkjwtTokens, setZkjwtTokens] = useState<Record<string, ZkJwtTokenState>>({});
   const [status, setStatus] = useState<string>('Paste wallet address and lookup');
   const [error, setError] = useState<string>('');
   const [snapshot, setSnapshot] = useState<RecoverySnapshot | null>(null);
@@ -224,6 +310,21 @@ export function RecoverPage(props: RecoverPageProps) {
   const selectedGuardianMissingLocalCredential = Boolean(
     selectedGuardian?.guardianType === GuardianType.Passkey && !selectedPasskey,
   );
+  const selectedGuardianKey = selectedGuardian?.identifier.toLowerCase() ?? '';
+  const selectedZkjwtInput = selectedGuardianKey ? zkjwtInputs[selectedGuardianKey] : undefined;
+  const selectedZkjwtToken = selectedGuardianKey ? zkjwtTokens[selectedGuardianKey] : undefined;
+  const selectedZkjwtTokenExpired = Boolean(
+    selectedZkjwtToken?.exp && Math.floor(Date.now() / 1000) >= selectedZkjwtToken.exp,
+  );
+  const selectedGuardianMissingZkjwtInput = Boolean(
+    selectedGuardian?.guardianType === GuardianType.ZkJWT &&
+      !selectedZkjwtInput?.salt?.trim(),
+  );
+  const selectedGuardianMissingZkjwtToken = Boolean(
+    selectedGuardian?.guardianType === GuardianType.ZkJWT && !selectedZkjwtToken,
+  );
+  const googleOauthClientId = (import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined)?.trim() ?? '';
+  const googleOauthConfigured = googleOauthClientId.length > 0;
 
   async function refreshChainClock() {
     const block = await publicClient.getBlock({ blockTag: 'latest' });
@@ -391,6 +492,38 @@ export function RecoverPage(props: RecoverPageProps) {
     setLocalPasskeys(listPasskeys());
   }
 
+  function updateSelectedZkjwtInput(patch: Partial<{ salt: string }>) {
+    if (!selectedGuardian || selectedGuardian.guardianType !== GuardianType.ZkJWT) {
+      return;
+    }
+    const key = selectedGuardian.identifier.toLowerCase();
+    setZkjwtInputs((prev) => {
+      const current = prev[key] ?? { salt: '' };
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  function clearSelectedZkjwtToken() {
+    if (!selectedGuardian || selectedGuardian.guardianType !== GuardianType.ZkJWT) {
+      return;
+    }
+    const key = selectedGuardian.identifier.toLowerCase();
+    setZkjwtTokens((prev) => {
+      if (!prev[key]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   async function generateSelectedGuardianProof(intent: RecoveryIntent) {
     if (!selectedGuardian) {
       throw new Error('Select a guardian');
@@ -414,6 +547,7 @@ export function RecoverPage(props: RecoverPageProps) {
     }
 
     if (selectedGuardian.guardianType === GuardianType.Passkey) {
+      setStatus('Waiting for passkey approval...');
       const currentPasskey = passkeysByIdentifier.get(selectedGuardian.identifier.toLowerCase());
       if (!currentPasskey) {
         throw new Error(
@@ -439,7 +573,41 @@ export function RecoverPage(props: RecoverPageProps) {
       };
     }
 
-    throw new Error('Selected guardian type is not supported yet.');
+    if (selectedGuardian.guardianType === GuardianType.ZkJWT) {
+      const key = selectedGuardian.identifier.toLowerCase();
+      const zkjwtInput = zkjwtInputs[key];
+      const salt = parseZkjwtSaltInput(zkjwtInput?.salt ?? '');
+      const tokenState = zkjwtTokens[key];
+      if (!tokenState) {
+        throw new Error('Authenticate Google account for the selected ZK JWT guardian first.');
+      }
+      if (tokenState.exp && tokenState.exp <= Math.floor(Date.now() / 1000)) {
+        throw new Error('Authenticated Google id_token is expired. Authenticate again.');
+      }
+      const computedCommitment = await computeZkJwtIdentifier(tokenState.email, salt);
+      if (computedCommitment.toLowerCase() !== selectedGuardian.identifier.toLowerCase()) {
+        throw new Error('Authenticated Google account does not match selected ZK JWT guardian commitment.');
+      }
+
+      const adapter = createZkJwtAdapter({
+        jwt: tokenState.idToken,
+        salt,
+      });
+      setStatus('Generating zkJWT proof...');
+      const proofResult = await adapter.generateProof(intent, selectedGuardian.identifier);
+      if (!proofResult.success || !proofResult.proof) {
+        throw new Error(proofResult.error || 'Could not generate zkJWT proof');
+      }
+
+      return {
+        guardianIndex,
+        proof: proofResult.proof,
+        submitterWalletClient: getWalletClient(executorPrivateKey),
+        guardianDescription: `Guardian #${selectedGuardianIndex} (ZK JWT)`,
+      };
+    }
+
+    throw new Error('Selected guardian type is not supported.');
   }
 
   async function clearExpiredRecoveryForWallet(walletAddress: Address): Promise<boolean> {
@@ -474,6 +642,67 @@ export function RecoverPage(props: RecoverPageProps) {
     return true;
   }
 
+  async function handleAuthenticateGoogle() {
+    setError('');
+    if (!selectedGuardian || selectedGuardian.guardianType !== GuardianType.ZkJWT) {
+      setError('Selected guardian is not a ZK JWT guardian.');
+      return;
+    }
+    if (!googleOauthConfigured) {
+      setError('Google OAuth client ID is missing. Set VITE_GOOGLE_OAUTH_CLIENT_ID in example/aa-wallet/.env.');
+      return;
+    }
+
+    try {
+      parseZkjwtSaltInput(selectedZkjwtInput?.salt ?? '');
+      setStatus('Opening Google sign-in popup...');
+      const authResult = await requestGoogleIdTokenPopup({
+        clientId: googleOauthClientId,
+      });
+      const idToken = authResult.idToken;
+      const payload = decodeJwtPayload(idToken);
+      if (typeof payload.nonce !== 'string' || payload.nonce !== authResult.nonce) {
+        throw new Error('Google id_token nonce mismatch.');
+      }
+      const tokenEmail = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+      if (!tokenEmail) {
+        throw new Error('Google id_token is missing email claim.');
+      }
+      if (payload.email_verified !== true) {
+        throw new Error('Google id_token has email_verified !== true.');
+      }
+      const exp = typeof payload.exp === 'number' ? payload.exp : null;
+      if (exp && exp <= Math.floor(Date.now() / 1000)) {
+        throw new Error('Google id_token is expired. Authenticate again.');
+      }
+      const salt = parseZkjwtSaltInput(selectedZkjwtInput?.salt ?? '');
+      const computedCommitment = await computeZkJwtIdentifier(tokenEmail, salt);
+      if (computedCommitment.toLowerCase() !== selectedGuardian.identifier.toLowerCase()) {
+        throw new Error('Authenticated Google account does not match selected ZK JWT guardian commitment.');
+      }
+
+      const key = selectedGuardian.identifier.toLowerCase();
+      setZkjwtTokens((prev) => ({
+        ...prev,
+        [key]: {
+          idToken,
+          email: tokenEmail,
+          exp,
+          issuedAt: new Date().toISOString(),
+        },
+      }));
+
+      props.addActivity({
+        label: 'Google authenticated for zkJWT guardian',
+        details: `${shortHex(selectedGuardian.identifier)} (${tokenEmail})`,
+      });
+      setStatus(`Google authenticated as ${tokenEmail}`);
+    } catch (authError) {
+      setError(formatRecoverError(authError, 'Google authentication failed'));
+      setStatus('Google authentication failed');
+    }
+  }
+
   async function handleStartRecovery() {
     setError('');
     if (!snapshot) {
@@ -490,6 +719,18 @@ export function RecoverPage(props: RecoverPageProps) {
     }
     if (selectedGuardianMissingLocalCredential) {
       setError('Selected passkey guardian is not available in this browser.');
+      return;
+    }
+    if (selectedGuardianMissingZkjwtInput) {
+      setError('Enter salt for the selected ZK JWT guardian.');
+      return;
+    }
+    if (selectedGuardianMissingZkjwtToken) {
+      setError('Authenticate Google account for the selected ZK JWT guardian.');
+      return;
+    }
+    if (selectedZkjwtTokenExpired) {
+      setError('Authenticated Google id_token is expired. Authenticate again.');
       return;
     }
 
@@ -519,11 +760,7 @@ export function RecoverPage(props: RecoverPageProps) {
         recoveryManagerAddress: latestSnapshot.recoveryManager,
       });
 
-      setStatus(
-        selectedGuardian.guardianType === GuardianType.Passkey
-          ? 'Waiting for passkey approval...'
-          : 'Submitting first guardian proof...',
-      );
+      setStatus('Submitting first guardian proof...');
       const hash = await guardianClient.startRecovery({
         intent,
         guardianIndex: proofPayload.guardianIndex,
@@ -581,6 +818,18 @@ export function RecoverPage(props: RecoverPageProps) {
       setError('Selected passkey guardian is not available in this browser.');
       return;
     }
+    if (selectedGuardianMissingZkjwtInput) {
+      setError('Enter salt for the selected ZK JWT guardian.');
+      return;
+    }
+    if (selectedGuardianMissingZkjwtToken) {
+      setError('Authenticate Google account for the selected ZK JWT guardian.');
+      return;
+    }
+    if (selectedZkjwtTokenExpired) {
+      setError('Authenticated Google id_token is expired. Authenticate again.');
+      return;
+    }
 
     try {
       const walletAddress = getAddress(targetWalletInput);
@@ -593,11 +842,7 @@ export function RecoverPage(props: RecoverPageProps) {
         recoveryManagerAddress: snapshot.recoveryManager,
       });
 
-      setStatus(
-        selectedGuardian.guardianType === GuardianType.Passkey
-          ? 'Waiting for passkey approval...'
-          : 'Submitting guardian approval...',
-      );
+      setStatus('Submitting guardian approval...');
       const hash = await guardianClient.submitProof({
         guardianIndex: proofPayload.guardianIndex,
         proof: proofPayload.proof,
@@ -795,6 +1040,7 @@ export function RecoverPage(props: RecoverPageProps) {
         guardianPrivateKey,
         executorPrivateKey,
         cancelOwnerPrivateKey,
+        zkjwtInputs,
       } satisfies PersistedRecoverState),
     );
   }, [
@@ -805,6 +1051,7 @@ export function RecoverPage(props: RecoverPageProps) {
     newOwnerInput,
     selectedGuardianIndex,
     targetWalletInput,
+    zkjwtInputs,
   ]);
 
   useEffect(() => {
@@ -937,6 +1184,63 @@ export function RecoverPage(props: RecoverPageProps) {
           </div>
         ) : null}
 
+        {selectedGuardian?.guardianType === GuardianType.ZkJWT ? (
+          <div className="subpanel">
+            <h3>3. ZK JWT guardian</h3>
+            <p className="muted">Enter salt, then authenticate Google in a popup. JWT stays client-side and is used for ZK proof generation.</p>
+            <label className="field">
+              <span>Salt shared by wallet owner</span>
+              <input
+                value={selectedZkjwtInput?.salt ?? ''}
+                onChange={(event) => updateSelectedZkjwtInput({ salt: event.target.value })}
+                placeholder="e.g. 123456789"
+              />
+            </label>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void handleAuthenticateGoogle()}
+                disabled={!googleOauthConfigured}
+                title="Open Google OAuth popup and cache id_token in browser memory"
+              >
+                Authenticate Google
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={clearSelectedZkjwtToken}
+                disabled={!selectedZkjwtToken}
+                title="Forget cached Google token for this guardian"
+              >
+                Clear Google Token
+              </button>
+            </div>
+
+            {!googleOauthConfigured ? (
+              <p className="error">Set `VITE_GOOGLE_OAUTH_CLIENT_ID` in `example/aa-wallet/.env` to enable Google popup auth.</p>
+            ) : null}
+            <div className="stats one-col">
+              <div>
+                <span>Selected guardian commitment</span>
+                <strong>{shortHex(selectedGuardian.identifier)}</strong>
+              </div>
+              <div>
+                <span>Authenticated Google account</span>
+                <strong>{selectedZkjwtToken ? selectedZkjwtToken.email : 'Not authenticated'}</strong>
+              </div>
+              <div>
+                <span>Token expiry</span>
+                <strong>
+                  {selectedZkjwtToken?.exp ? new Date(selectedZkjwtToken.exp * 1000).toLocaleString() : 'Unknown'}
+                  {selectedZkjwtTokenExpired ? ' (expired)' : ''}
+                </strong>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <label className="field">
           <span>Executor / helper signer</span>
           <select value={executorPrivateKey} onChange={(event) => setExecutorPrivateKey(event.target.value as Hex)}>
@@ -970,6 +1274,7 @@ export function RecoverPage(props: RecoverPageProps) {
             Selected passkey guardian is not available in this browser. Use the same browser/device that enrolled it.
           </p>
         ) : null}
+        {selectedZkjwtTokenExpired ? <p className="error">Cached Google id_token is expired. Authenticate again.</p> : null}
 
         <div className="actions">
           <button
@@ -978,7 +1283,10 @@ export function RecoverPage(props: RecoverPageProps) {
             disabled={
               !snapshot ||
               (activeSession && snapshot.status !== 'expired') ||
-              selectedGuardianMissingLocalCredential
+              selectedGuardianMissingLocalCredential ||
+              selectedGuardianMissingZkjwtInput ||
+              selectedGuardianMissingZkjwtToken ||
+              selectedZkjwtTokenExpired
             }
             title="Create a new recovery session and submit the first guardian proof"
           >
@@ -992,7 +1300,10 @@ export function RecoverPage(props: RecoverPageProps) {
               !activeSession ||
               snapshot.status === 'expired' ||
               selectedGuardianAlreadyApproved ||
-              selectedGuardianMissingLocalCredential
+              selectedGuardianMissingLocalCredential ||
+              selectedGuardianMissingZkjwtInput ||
+              selectedGuardianMissingZkjwtToken ||
+              selectedZkjwtTokenExpired
             }
             title="Submit another guardian proof for the active session"
           >

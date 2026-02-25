@@ -29,9 +29,8 @@ cd sdk && npm run test:e2e
 # Circuits
 cd circuits/zkjwt && nargo build && nargo test
 
----
-
 # Standalone example app
+# Set VITE_GOOGLE_OAUTH_CLIENT_ID in example/aa-wallet/.env to enable zkJWT guardian flow
 cd example/aa-wallet && npm install && npm run local:up
 
 # Stop local example stack:
@@ -41,3 +40,5 @@ cd example/aa-wallet && npm run local:down
 ## Documentation
 
 See [docs/](./docs/README.md) for detailed documentation, [SPEC.md](./SPEC.md) for the full technical specification, [ARCHITECTURE.md](./ARCHITECTURE.md) for the project architecture, [ROADMAP.md](./ROADMAP.md) for the development roadmap, and [CHECKLIST.md](./CHECKLIST.md) for the current progress tracking.
+
+Standalone example details (EOA + Passkey + zkJWT flows) are in [example/README.md](./example/README.md).

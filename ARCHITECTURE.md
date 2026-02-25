@@ -1,7 +1,7 @@
 # Social Recovery SDK — Architecture
 
-**Version:** 1.2.0
-**Date:** 2026-02-24
+**Version:** 1.3.0
+**Date:** 2026-02-25
 
 This document defines the codebase structure. For functional requirements and protocol design, see [SPEC.md](./SPEC.md).
 
@@ -100,6 +100,8 @@ social-recovery-sdk/
 │       │   ├── local-up.sh           # Start Anvil, build/deploy stack, run app
 │       │   ├── local-down.sh         # Stop local services
 │       │   └── deploy-local.ts       # Deploy SDK + example contracts and write local config
+│       ├── public/
+│       │   └── google-oauth-callback.html # OAuth popup callback bridge
 │       └── src/
 │           ├── app/
 │           │   ├── App.tsx
@@ -114,6 +116,7 @@ social-recovery-sdk/
 │           │   ├── recovery.ts
 │           │   ├── policy.ts
 │           │   ├── passkeys.ts
+│           │   ├── google-oauth.ts    # Google OAuth popup helper for zkJWT flow
 │           │   └── intents.ts
 │           └── styles/
 │               └── global.css
